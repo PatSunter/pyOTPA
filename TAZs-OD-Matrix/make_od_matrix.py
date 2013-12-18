@@ -3,7 +3,7 @@
 import csv
 import os
 
-tfile = open('/Users/Shared/SoftwareDev/UrbanModelling-GIS/OpenTripPlanner/BatchResults/tazs/taz_locs.csv', 'rb')
+tfile = open('/Users/Shared/SoftwareDev/UrbanModelling-GIS/OpenTripPlanner/BatchResults/tazs-current/taz_locs.csv', 'rb')
 treader = csv.reader(tfile, delimiter=',', quotechar="'")
 
 #First we'll just assemble the list of dirnames.
