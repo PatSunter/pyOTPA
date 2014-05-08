@@ -113,12 +113,14 @@ def readNVMatrix(nvfilename, mat):
 
 # High-level analysis functions.
 
-def saveComparisonFile(routesArray, od_mat_1, od_mat_2, compfilename):
+def saveComparisonFile(routesArray, od_mat_1, od_mat_2, compfilename,
+        case_names):
     compfile = open(compfilename, "w")
     compwriter = csv.writer(compfile, delimiter=',')
     # Header row
-    compwriter.writerow(['OriginID','DestID', 'OTP_Time (s)', \
-        'NV_Time (s)', 'Difference (s)', 'Abs. Diff (s)', 'Abs. Diff (%)'])
+    compwriter.writerow(['OriginID','DestID', '%s Time (s)' % case_names[0], \
+        '%s Time (s)' % case_names[1], 'Difference (s)', 'Abs. Diff (s)',
+        'Abs. Diff (%)','Diff (%)'])
     for ii, route in enumerate(routesArray):
         originID = route[0]
         destID = route[1]
@@ -130,17 +132,19 @@ def saveComparisonFile(routesArray, od_mat_1, od_mat_2, compfilename):
         #  we can interpret if it was created by OTP etc how to handle.
         #  would require more complex data structures, or an object-oriented
         #  wrapper with an is_valid() function etc.
-        if time_1 in [-1,-2] or time_2 in [-1,-2]:
+        if time_1 in [0,-1,-2] or time_2 in [0,-1,-2]:
             diff = "NA"
+            diff_percent = "NA"
             absdiff = "NA"
             absdiff_percent = "NA"
         else:
             diff = time_1 - time_2
+            diff_percent = diff / float(time_1)
             absdiff = abs(diff)
             absdiff_percent = absdiff / float(time_1)
 
         compwriter.writerow([originID, destID, time_1, time_2, diff, absdiff,\
-            absdiff_percent])
+            absdiff_percent, diff_percent])
     compfile.close()
     return
 
@@ -234,7 +238,7 @@ def createShapefile(routesArray, latlons, case1Times, case2Times, caseNames,
         feature.SetField('DestID', destID)
         feature.SetField(c1TimeFieldName, case1time)
         feature.SetField(c2TimeFieldName, case2time)
-        if case1time in [-1,-2] or case2time in [-1,-2]:
+        if case1time in [0,-1,-2] or case2time in [0,-1,-2]:
             diff = 0
         else:
             diff = case1time - case2time
