@@ -64,12 +64,13 @@ def isobands(in_file, band, out_file, out_format, layer_name, attr_name,
 
     raster_values = band_in.ReadAsArray(0, 0, xsize_in, ysize_in)
 
-    stats = band_in.GetStatistics(True, True)
+    #stats = band_in.GetStatistics(True, True)
+    min_value, max_value = band_in.ComputeRasterMinMax()
     if min_level == None:
-        min_value = stats[0]
+        #min_value = stats[0]
         min_level = offset + interval * floor((min_value - offset)/interval)
    
-    max_value = stats[1]
+    #max_value = stats[1]
     #Due to range issues, a level is added
     max_level = offset + interval * (1 + ceil((max_value - offset)/interval)) 
 
