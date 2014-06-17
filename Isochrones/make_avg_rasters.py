@@ -67,7 +67,6 @@ def make_contours_isobands(loc_name, timestr, nearby_mins, num_each_side,
     ctr_fname = os.path.splitext(fname_base)[0] + "-avg%d-isos.shp" % numavg
     if os.path.exists(ctr_fname):
         os.unlink(ctr_fname)
-    # TODO:- fix hard-coding of contour bands here ...
     timeset_str = " ".join([str(tval+0.1) for tval in iso_timeset])
     contourcmd = 'gdal_contour -a time %s %s -nln isochrones -fl %s' \
         % (avg_fname, ctr_fname, timeset_str)
