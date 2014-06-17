@@ -2,9 +2,9 @@
 
 import urllib
 import urllib2
-from datetime import datetime, timedelta
-import os
 import os.path
+
+import utils
 
 """A Python script to help download a series of Isochrone files from
 an OpenTripPlanner server"""
@@ -48,54 +48,7 @@ def buildRequestStringVector(server_url, paramsDict, date, time, lon_lat,
     url = server_url + reqStr
     return url
 
-def rasterName(loc_name, time, rel_dir=None, suffix=""):
-    fname =  str.replace(loc_name, ' ', '_') \
-        + '-' + str.replace(time, ':', '_')
-    if suffix and suffix != "":
-        fname += '-' + suffix
-    fname += '.tiff'
-    if rel_dir is not None:
-        path = os.path.join(".", rel_dir, fname)
-    else:
-        path = fname
-    return path
-
-def vectorName(loc_name, time, iso, vec_type, rel_dir=None):
-   fname = str.replace(loc_name, ' ', '_') \
-        + '-' + str.replace(time, ':', '_') \
-        + '-' + str(iso) +"min" \
-        + '-' + str.lower(vec_type) \
-        + '.geojson'
-   if rel_dir is not None:
-       path = os.path.join(".", rel_dir, fname)
-   else:
-       path = fname
-   return path
-
-def get_nearby_min_diffs(nearby_minutes, num_each_side):
-    inc_range = range(1, num_each_side+1)
-    mins_before = [-nearby_minutes * ii/float(num_each_side) \
-        for ii in reversed(inc_range)]
-    mins_after = [nearby_minutes * ii/float(num_each_side) \
-        for ii in inc_range]
-    mins_diffs = mins_before + [0] + mins_after
-    return mins_diffs
-
-def get_date_time_string_set(base_date, base_time, mins_diffs):
-    y_m_d = [int(ii) for ii in base_date.split('-')]
-    h_m_s = [int(ii) for ii in base_time.split(':')]
-    dtime_orig = datetime(year=y_m_d[0], month=y_m_d[1],
-        day=y_m_d[2], hour=h_m_s[0], minute=h_m_s[1],
-        second=h_m_s[2])
-    date_time_set = []
-    for mins_diff in mins_diffs:
-        time_diff = timedelta(minutes=mins_diff)
-        mt = dtime_orig + time_diff
-        date_mod = "%d-%02d-%02d" % (mt.year, mt.month, mt.day)
-        time_mod = "%02d:%02d:%02d" % (mt.hour, mt.minute, mt.second)
-        date_time_set.append((date_mod, time_mod))
-    return date_time_set    
-                
+               
 #TODO: Might be good to set default values for some of these.
 def saveIsosForLocations(server_url, locations, paramsDict, date, times,
         save_nearby_times, nearby_minutes, num_each_side,
@@ -117,22 +70,27 @@ def saveIsosForLocations(server_url, locations, paramsDict, date, times,
             if save_nearby_times is None:
                 mins_diffs = 0
             else:
-                mins_diffs = get_nearby_min_diffs(nearby_minutes, num_each_side)
+                mins_diffs = utils.get_nearby_min_diffs(nearby_minutes,
+                    num_each_side)
 
-            date_time_str_set = get_date_time_string_set(date, time, mins_diffs)
+            date_time_str_set = utils.get_date_time_string_set(date, time,
+                mins_diffs)
+            fname_set = utils.get_raster_filenames(loc_name_orig,
+                date_time_str_set, output_subdir, suffix)
 
-            print "About to save rasters at dates and times:"
-            for date_mod, time_mod in date_time_str_set:
-                print "   %s - %s" % (date_mod, time_mod) 
+            print "About to save rasters at dates and times, to files:"
+            for date_time_tuple, fname in zip(date_time_str_set, fname_set):
+                date_mod, time_mod = date_time_tuple
+                print "   %s - %s -> %s" % (date_mod, time_mod, fname) 
 
-            for date_mod, time_mod in date_time_str_set:
+            for date_time_tuple, fname in zip(date_time_str_set, fname_set):
+                date_mod, time_mod = date_time_tuple
                 url = buildRequestStringRaster(server_url, paramsDict,
                     date_mod, time_mod, lon_lat, img_bbox, res, router_id)
                 print url
                 response = urllib2.urlopen(url)
                 data = response.read()
-                f = open(rasterName(loc_name_orig, time_mod, output_subdir,
-                    suffix), "w")
+                f = open(fname, "w")
                 f.write(data)
                 f.close()
 
@@ -145,7 +103,7 @@ def saveIsosForLocations(server_url, locations, paramsDict, date, times,
                     print url
                     response = urllib2.urlopen(url)
                     data = response.read()
-                    f = open(vectorName(loc_name_orig, time, iso, vec_type,
+                    f = open(utils.vectorName(loc_name_orig, time, iso, vec_type,
                         output_subdir), "w")
                     f.write(data)
                     f.close()

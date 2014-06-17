@@ -1,34 +1,28 @@
 import os
 import os.path
 import string
-from datetime import datetime, timedelta, time
+from datetime import date
+import itertools
+import operator
 
-from download_isochrones import rasterName
+import utils
 
 # These determine default isochrone time maximums and increments
 DEF_ISO_MAX=40
 DEF_ISO_INC=10
 
-def make_average_raster(loc_name, timestr, nearby_mins, num_each_side,
-        rel_dir=None):
-    fnames = []
-    h_m_s = [int(ii) for ii in timestr.split(':')]
-    time_orig = time(hour=h_m_s[0], minute=h_m_s[1], second=h_m_s[2])
-    dtime_orig = datetime.combine(datetime.today(), time_orig)
-    for ii in reversed(range(1, num_each_side+1)):
-        minsdiff = nearby_mins * float(ii)/num_each_side
-        time_diff = timedelta(minutes=minsdiff)
-        mt = dtime_orig - time_diff
-        time_mod = "%02d:%02d:%02d" % (mt.hour, mt.minute, mt.second)
-        fnames.append(rasterName(loc_name, time_mod, rel_dir))
-    fnames.append(rasterName(loc_name, timestr, rel_dir))
-    for ii in range(1, num_each_side+1):
-        minsdiff = nearby_mins * float(ii)/num_each_side
-        time_diff = timedelta(minutes=minsdiff)
-        mt = dtime_orig + time_diff
-        time_mod = "%02d:%02d:%02d" % (mt.hour, mt.minute, mt.second)
-        fnames.append(rasterName(loc_name, time_mod, rel_dir))
+CORRECT_NODATA_VALUE_BYTE=128
 
+def make_average_raster(loc_name, timestr, nearby_mins, num_each_side,
+        rel_dir=None, suffix=None):
+    mins_diffs = utils.get_nearby_min_diffs(nearby_mins,
+                    num_each_side)
+    today_str = date.today().isoformat()
+    date_time_str_set = utils.get_date_time_string_set(today_str, timestr,
+                mins_diffs)
+    fnames = utils.get_raster_filenames(loc_name, date_time_str_set, rel_dir,
+        suffix)
+        
     # This VRT step is necessary since :- for this kind of 'raster algebra',
     # the problem is that the original type is Byte, and it won't hold a value
     # of over 128 properly. So we temporarily transform to Float32 using the
@@ -39,15 +33,20 @@ def make_average_raster(loc_name, timestr, nearby_mins, num_each_side,
         vrtname = os.path.splitext(fname)[0]+".vrt"
         vrtnames.append(vrtname)
     
+    for fname in fnames:
+        editcmd = "gdal_edit.py -a_nodata %d %s" \
+            % (CORRECT_NODATA_VALUE_BYTE, fname)
+        print "Running %s:" % editcmd
+        os.system(editcmd)
     for ii in range(len(fnames)):
         transcmd = "gdal_translate -ot Float32 -of VRT %s %s" \
             % (fnames[ii], vrtnames[ii])
         print "Running %s:" % transcmd
         os.system(transcmd)
-    
+
     # Now do the big average
-    avg_fname = os.path.splitext(rasterName(loc_name, timestr, rel_dir))[0] \
-        + "-avg%d.tiff" % len(fnames)
+    fname_main = utils.rasterName(loc_name, timestr, rel_dir, suffix)
+    avg_fname = os.path.splitext(fname_main)[0] + "-avg%d.tiff" % len(fnames)
 
     caps = string.ascii_uppercase[:len(fnames)]
     vrts_str = " ".join(["-%s %s" % (a, b) for a, b in zip(caps, vrtnames)])
@@ -59,10 +58,10 @@ def make_average_raster(loc_name, timestr, nearby_mins, num_each_side,
     return
 
 def make_contours_isobands(loc_name, timestr, nearby_mins, num_each_side,
-        rel_dir=None, iso_max=DEF_ISO_MAX, iso_inc=DEF_ISO_INC):
+        rel_dir=None, suffix=None, iso_max=DEF_ISO_MAX, iso_inc=DEF_ISO_INC):
     iso_timeset = range(0, iso_max+1, iso_inc)[1:]
     numavg = 1 + 2*num_each_side
-    fname_base = rasterName(loc_name, timestr, rel_dir)
+    fname_base = utils.rasterName(loc_name, timestr, rel_dir, suffix)
     avg_fname = os.path.splitext(fname_base)[0] + "-avg%d.tiff" % numavg
     ctr_fname = os.path.splitext(fname_base)[0] + "-avg%d-isos.shp" % numavg
     if os.path.exists(ctr_fname):
@@ -77,7 +76,7 @@ def make_contours_isobands(loc_name, timestr, nearby_mins, num_each_side,
     # Requires downloading free script from reviciana on Github - thanks!
     # (which in turn relies on Matplotlib)
     # https://github.com/rveciana/geoexamples/tree/master/python/raster_isobands
-    isobandscmd = './isobands_matplotlib.py -a time %s %s -nln isochrones ' \
+    isobandscmd = 'isobands_matplotlib.py -a time %s %s -nln isochrones ' \
         '-i %d' % (avg_fname, isob_fname, iso_inc)
     print "Running %s:" % isobandscmd 
     os.system(isobandscmd)
@@ -97,12 +96,13 @@ def make_contours_isobands(loc_name, timestr, nearby_mins, num_each_side,
 
 def generate_rasters_isobands_for_set(base_subdir, router_subdirs, placenames,
         timestrs, nearby_minutes, num_each_side,
-        iso_max=DEF_ISO_MAX, iso_inc=DEF_ISO_INC):
+        iso_max=DEF_ISO_MAX, iso_inc=DEF_ISO_INC, suffix=None):
     for router_id, output_subdir in router_subdirs:
         full_output_subdir = os.path.join(base_subdir, output_subdir)
         for placename in placenames:
             for timestr in timestrs:
                     make_average_raster(placename, timestr, nearby_minutes,
-                        num_each_side, full_output_subdir)
+                        num_each_side, full_output_subdir, suffix=suffix)
                     make_contours_isobands(placename, timestr, nearby_minutes,
-                        num_each_side, full_output_subdir, iso_max, iso_inc)
+                        num_each_side, full_output_subdir, suffix,
+                        iso_max, iso_inc)
