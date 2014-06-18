@@ -13,16 +13,16 @@ DEF_ISO_INC=10
 
 CORRECT_NODATA_VALUE_BYTE=128
 
-def make_average_raster(loc_name, timestr, nearby_mins, num_each_side,
-        rel_dir=None, suffix=None):
-    mins_diffs = utils.get_nearby_min_diffs(nearby_mins,
-                    num_each_side)
+def make_average_raster(save_path, file_suffix, loc_name, timestr, 
+        nearby_minutes, num_each_side, **kwargs):
+    # N.B. :- there may be other kwargs passed in, not relevant here, which we ignore,
+    # hence kwargs on the end.
+    mins_diffs = utils.get_nearby_min_diffs(nearby_minutes, num_each_side)
     today_str = date.today().isoformat()
     date_time_str_set = utils.get_date_time_string_set(today_str, timestr,
                 mins_diffs)
-    fnames = utils.get_raster_filenames(loc_name, date_time_str_set, rel_dir,
-        suffix)
-        
+    fnames = utils.get_raster_filenames(loc_name, date_time_str_set, save_path,
+        file_suffix)
     # This VRT step is necessary since :- for this kind of 'raster algebra',
     # the problem is that the original type is Byte, and it won't hold a value
     # of over 128 properly. So we temporarily transform to Float32 using the
@@ -45,23 +45,25 @@ def make_average_raster(loc_name, timestr, nearby_mins, num_each_side,
         os.system(transcmd)
 
     # Now do the big average
-    fname_main = utils.rasterName(loc_name, timestr, rel_dir, suffix)
+    fname_main = utils.rasterName(loc_name, timestr, save_path, file_suffix)
     avg_fname = os.path.splitext(fname_main)[0] + "-avg%d.tiff" % len(fnames)
 
     caps = string.ascii_uppercase[:len(fnames)]
     vrts_str = " ".join(["-%s %s" % (a, b) for a, b in zip(caps, vrtnames)])
     calc_str = "("+"+".join(caps)+")"+"/"+str(len(vrtnames))
-    calccmd = 'gdal_calc.py %s --outfile=%s --NoDataValue=%d --calc="%s" --type=Byte --overwrite' \
+    calccmd = 'gdal_calc.py %s --outfile=%s --NoDataValue=%d --calc="%s" '\
+        '--type=Byte --overwrite' \
         % (vrts_str, avg_fname, CORRECT_NODATA_VALUE_BYTE, calc_str)
     print "Running %s:" % calccmd    
     os.system(calccmd)
     return
 
-def make_contours_isobands(loc_name, timestr, nearby_mins, num_each_side,
-        rel_dir=None, suffix=None, iso_max=DEF_ISO_MAX, iso_inc=DEF_ISO_INC):
+def make_contours_isobands(save_path, file_suffix, loc_name, timestr,
+        num_each_side, iso_max, iso_inc, **kwargs):
+    # N.B. :- again kwargs is needed at the end to ignore unneeded args.
     iso_timeset = range(0, iso_max+1, iso_inc)[1:]
     numavg = 1 + 2*num_each_side
-    fname_base = utils.rasterName(loc_name, timestr, rel_dir, suffix)
+    fname_base = utils.rasterName(loc_name, timestr, save_path, file_suffix)
     avg_fname = os.path.splitext(fname_base)[0] + "-avg%d.tiff" % numavg
     ctr_fname = os.path.splitext(fname_base)[0] + "-avg%d-isos.shp" % numavg
     if os.path.exists(ctr_fname):
@@ -73,8 +75,8 @@ def make_contours_isobands(loc_name, timestr, nearby_mins, num_each_side,
     os.system(contourcmd)
     isob_fname = os.path.splitext(fname_base)[0] \
         + "-avg%d-isobands-mp.shp" % numavg
-    # Requires downloading free script from reviciana on Github - thanks!
-    # (which in turn relies on Matplotlib)
+    # Line below calls script that relies on Matplotlib
+    # Sourced from:
     # https://github.com/rveciana/geoexamples/tree/master/python/raster_isobands
     isobandscmd = 'isobands_matplotlib.py -a time %s %s -nln isochrones ' \
         '-i %d' % (avg_fname, isob_fname, iso_inc)
@@ -94,15 +96,13 @@ def make_contours_isobands(loc_name, timestr, nearby_mins, num_each_side,
     print "Running %s:" % isobandssubsetcmd 
     os.system(isobandssubsetcmd)
 
-def generate_rasters_isobands_for_set(base_subdir, router_subdirs, placenames,
-        timestrs, nearby_minutes, num_each_side,
-        iso_max=DEF_ISO_MAX, iso_inc=DEF_ISO_INC, suffix=None):
-    for router_id, output_subdir in router_subdirs:
-        full_output_subdir = os.path.join(base_subdir, output_subdir)
-        for placename in placenames:
-            for timestr in timestrs:
-                    make_average_raster(placename, timestr, nearby_minutes,
-                        num_each_side, full_output_subdir, suffix=suffix)
-                    make_contours_isobands(placename, timestr, nearby_minutes,
-                        num_each_side, full_output_subdir, suffix,
-                        iso_max, iso_inc)
+def generate_avg_rasters_and_isobands(multi_graph_iso_set):
+    for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
+            multi_graph_iso_set:
+        for placename in \
+                itertools.imap(operator.itemgetter(0), isos_spec['locations']):
+            for timestr in isos_spec['times']:
+                make_average_raster(save_path, save_suffix, placename, timestr,
+                    **isos_spec)
+                make_contours_isobands(save_path, save_suffix, placename, timestr,
+                    **isos_spec)

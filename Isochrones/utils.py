@@ -2,29 +2,31 @@
 import os.path
 from datetime import datetime, timedelta
 
-def rasterName(loc_name, time, rel_dir=None, suffix=None):
+def rasterName(loc_name, time, base_path=None, suffix=None):
     fname =  str.replace(loc_name, ' ', '_') \
         + '-' + str.replace(time, ':', '_')
     if suffix and suffix != "":
         fname += '-' + suffix
     fname += '.tiff'
-    if rel_dir is not None:
-        path = os.path.join(".", rel_dir, fname)
+    if base_path is not None:
+        path = os.path.join(os.path.expanduser(base_path), fname)
     else:
         path = fname
     return path
 
-def vectorName(loc_name, time, iso, vec_type, rel_dir=None):
-   fname = str.replace(loc_name, ' ', '_') \
+def vectorName(loc_name, time, iso, vec_type, base_path=None, suffix=None):
+    fname = str.replace(loc_name, ' ', '_') \
         + '-' + str.replace(time, ':', '_') \
         + '-' + str(iso) +"min" \
-        + '-' + str.lower(vec_type) \
-        + '.geojson'
-   if rel_dir is not None:
-       path = os.path.join(".", rel_dir, fname)
-   else:
-       path = fname
-   return path
+        + '-' + str.lower(vec_type)
+    if suffix and suffix != "":
+        fname += '-' + suffix
+    fname += '.geojson'
+    if base_path is not None:
+        path = os.path.join(os.path.expanduser(base_path), fname)
+    else:
+        path = fname
+    return path
 
 def get_nearby_min_diffs(nearby_minutes, num_each_side):
     inc_range = range(1, num_each_side+1)
@@ -50,11 +52,22 @@ def get_date_time_string_set(base_date, base_time, mins_diffs):
         date_time_set.append((date_mod, time_mod))
     return date_time_set    
  
-def get_raster_filenames(loc_name, date_time_str_set,
-        output_subdir, suffix):
+def get_raster_filenames(loc_name, date_time_str_set, base_path, suffix):
     fname_set = []
     for date_time_tuple in date_time_str_set:
         date_mod, time_mod = date_time_tuple        
-        fname_set.append(rasterName(loc_name, time_mod, output_subdir,
-            suffix))
+        fname_set.append(rasterName(loc_name, time_mod, base_path, suffix))
     return fname_set
+
+def gen_multi_graph_iso_spec(base_path, server_url, graph_infos,
+        iso_set_specifications):
+    iso_spec_list = []
+    if graph_infos is None or len(graph_infos) is 0:
+        iso_spec_list.append((server_url, None, base_path, None,
+            iso_set_specifications))
+    else:    
+        for otp_router_id, graph_subdir, file_suffix in graph_infos:
+            out_path = os.path.join(base_path, graph_subdir) 
+            iso_spec_list.append((server_url, otp_router_id, out_path,
+                file_suffix, iso_set_specifications))
+    return iso_spec_list        

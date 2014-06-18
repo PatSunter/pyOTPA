@@ -9,58 +9,59 @@ import utils
 """A Python script to help download a series of Isochrone files from
 an OpenTripPlanner server"""
 
-def buildRequestStringRaster(server_url, paramsDict, date, time, lon_lat,
-        img_bbox, res, router_id=None):
+def buildRequestStringRaster(server_url, routing_params, date, time, lon_lat,
+        img_bbox, raster_res, otp_router_id=None):
     reqStr = "/opentripplanner-api-webapp/ws" + "/wms" + '?'
     # General OTP routing request stuff
     reqStr += "&".join([name+'='+urllib2.quote(str(val)) for name, val \
-        in paramsDict.iteritems()])
+        in routing_params.iteritems()])
     reqStr += '&'+'fromPlace'+'='+str(lon_lat[1])+','+str(lon_lat[0])
     reqStr += '&'+'toPlace'+'='+str(lon_lat[1])+','+str(lon_lat[0])
     reqStr += '&'+'time'+'='+date+'T'+urllib2.quote(time)
     # Stuff specific to raster output
     reqStr += '&'+'format'+'='+"image/geotiff"
     reqStr += '&'+'srs'+'='+"EPSG:4326"
-    reqStr += '&'+'resolution'+'='+str(res)
+    reqStr += '&'+'resolution'+'='+str(raster_res)
     reqStr += '&'+'bbox'+'='+','.join(str(ii) for ii in img_bbox[0] + \
         img_bbox[1])
-    if router_id is not None:
-        reqStr += '&'+'routerId'+'='+router_id
+    if otp_router_id is not None:
+        reqStr += '&'+'routerId'+'='+otp_router_id
     # Add server URL
     url = server_url + reqStr
     return url
 
-def buildRequestStringVector(server_url, paramsDict, date, time, lon_lat,
-        time_radius, vec_type, router_id=None):
+def buildRequestStringVector(server_url, routing_params, date, time, lon_lat,
+        time_radius, vec_type, otp_router_id=None):
     reqStr = "/opentripplanner-api-webapp/ws" + "/iso" + '?'
     # General OTP routing request stuff
     reqStr += "&".join([name+'='+urllib2.quote(str(val)) for name, val \
-        in paramsDict.iteritems()])
+        in routing_params.iteritems()])
     reqStr += '&'+'fromPlace'+'='+str(lon_lat[1])+','+str(lon_lat[0])
     reqStr += '&'+'toPlace'+'='+str(lon_lat[1])+','+str(lon_lat[0])
     reqStr += '&'+'time'+'='+date+'T'+urllib2.quote(time)
     # Stuff specific to raster output
     reqStr += '&'+'walkTime'+'='+str(time_radius)
     reqStr += '&'+'output'+'='+vec_type
-    if router_id is not None:
-        reqStr += '&'+'routerId'+'='+router_id
+    if otp_router_id is not None:
+        reqStr += '&'+'routerId'+'='+otp_router_id
     # Add server URL
     url = server_url + reqStr
     return url
 
-               
-#TODO: Might be good to set default values for some of these.
-def saveIsosForLocations(server_url, locations, paramsDict, date, times,
+def saveIsosForLocations(server_url, otp_router_id, save_path,
+        save_suffix, locations, date, times,
         save_nearby_times, nearby_minutes, num_each_side,
-        img_buf, res, isochrones, vec_types,
-        router_id=None, output_subdir=None, suffix=None):
+        routing_params, 
+        raster_bounding_buf, raster_res,
+        iso_inc, iso_max, vec_types):
 
-    if output_subdir is not None and os.path.exists(output_subdir) is False: 
-        os.makedirs(output_subdir)
+    if os.path.exists(save_path) is False: 
+        os.makedirs(save_path)
 
     for loc in locations:
         loc_name_orig = loc[0]
         lon_lat = loc[1]
+        img_buf = raster_bounding_buf
         img_bbox = [(lon_lat[0] - img_buf[0], lon_lat[1] - img_buf[1]),
             (lon_lat[0] + img_buf[0], lon_lat[1] + img_buf[1])]
 
@@ -76,7 +77,7 @@ def saveIsosForLocations(server_url, locations, paramsDict, date, times,
             date_time_str_set = utils.get_date_time_string_set(date, time,
                 mins_diffs)
             fname_set = utils.get_raster_filenames(loc_name_orig,
-                date_time_str_set, output_subdir, suffix)
+                date_time_str_set, save_path, save_suffix)
 
             print "About to save rasters at dates and times, to files:"
             for date_time_tuple, fname in zip(date_time_str_set, fname_set):
@@ -85,8 +86,9 @@ def saveIsosForLocations(server_url, locations, paramsDict, date, times,
 
             for date_time_tuple, fname in zip(date_time_str_set, fname_set):
                 date_mod, time_mod = date_time_tuple
-                url = buildRequestStringRaster(server_url, paramsDict,
-                    date_mod, time_mod, lon_lat, img_bbox, res, router_id)
+                url = buildRequestStringRaster(server_url, routing_params,
+                    date_mod, time_mod, lon_lat, img_bbox, raster_res,
+                    otp_router_id)
                 print url
                 response = urllib2.urlopen(url)
                 data = response.read()
@@ -96,26 +98,23 @@ def saveIsosForLocations(server_url, locations, paramsDict, date, times,
 
             # Now get the vectors, at different time radius.
             print "About to save vectors:"
+            isochrones = range(iso_inc, iso_max+1, iso_inc)
             for iso in isochrones:
                 for vec_type in vec_types:
-                    url = buildRequestStringVector(server_url, paramsDict, 
-                        date, time, lon_lat, iso, vec_type, router_id)
+                    url = buildRequestStringVector(server_url, routing_params, 
+                        date, time, lon_lat, iso, vec_type, otp_router_id)
                     print url
                     response = urllib2.urlopen(url)
                     data = response.read()
                     f = open(utils.vectorName(loc_name_orig, time, iso, vec_type,
-                        output_subdir), "w")
+                        save_path, save_suffix), "w")
                     f.write(data)
                     f.close()
             print "DONE!\n"
     return
 
-def download_isochrone_set(base_subdir, router_subdirs=None, **kwargs):
-    # We just pass thru most arguments directly.
-    if router_subdirs is not None and len(router_subdirs) > 0:
-        for router_id, output_subdir in router_subdirs:
-            full_output_subdir = os.path.join(base_subdir, output_subdir)
-            dl_isos.saveIsosForLocations(output_subdir=full_output_subdir,
-                **kwargs)
-    else:
-        dl_isos.saveIsosForLocations(output_subdir=base_subdir, **kwargs)
+def save_isos(multi_graph_iso_set):
+    for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
+            multi_graph_iso_set:
+        saveIsosForLocations(server_url, otp_router_id, save_path,
+            save_suffix, **isos_spec)
