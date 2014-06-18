@@ -75,6 +75,7 @@ def gen_multi_graph_iso_spec(base_path, server_url, graph_infos,
 
 def save_metadata(multi_graph_iso_set):
     print "Saving metadata for each run in JSON format..."
+    fnames = []
     for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
             multi_graph_iso_set:
         now = datetime.now()
@@ -82,6 +83,7 @@ def save_metadata(multi_graph_iso_set):
         meta_fname = "-".join(["isos-metadata", d_t_str]) + ".json"
         meta_fname = os.path.join(os.path.abspath(save_path),
             meta_fname)
+        fnames.append(meta_fname)
         print "...saving metadata of an isochrone set into %s" % \
             (meta_fname)
         meta_dict = {}
@@ -96,4 +98,19 @@ def save_metadata(multi_graph_iso_set):
         json.dump(meta_dict, meta_file, indent=2)
         meta_file.close()
     print "Done."        
+    return fnames
         
+def load_iso_set_from_files(fnames):
+    iso_spec_list = []
+    for fname in fnames:
+        meta_file = open(fname, "r")
+        meta_dict = json.load(meta_file)
+        iso_spec_list.append(
+            (meta_dict['server_url'],
+            meta_dict['otp_router_id'], 
+            os.path.dirname(fname),
+            meta_dict['save_suffix'],
+            meta_dict['iso_set_specification']
+            ))
+    return iso_spec_list    
+
