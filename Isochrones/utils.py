@@ -94,7 +94,7 @@ def save_metadata(multi_graph_iso_set):
         meta_dict['iso_set_specification'] = isos_spec
         if not os.path.exists(save_path):
             os.makedirs(save_path)
-        meta_file = open(meta_fname, "w")
+        meta_file = open(meta_fname, "w", encoding='utf-8')
         json.dump(meta_dict, meta_file, indent=2)
         meta_file.close()
     print "Done."        
