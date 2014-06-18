@@ -51,8 +51,8 @@ def make_average_raster(loc_name, timestr, nearby_mins, num_each_side,
     caps = string.ascii_uppercase[:len(fnames)]
     vrts_str = " ".join(["-%s %s" % (a, b) for a, b in zip(caps, vrtnames)])
     calc_str = "("+"+".join(caps)+")"+"/"+str(len(vrtnames))
-    calccmd = 'gdal_calc.py %s --outfile=%s --calc="%s" --type=Byte --overwrite' \
-        % (vrts_str, avg_fname, calc_str)
+    calccmd = 'gdal_calc.py %s --outfile=%s --NoDataValue=%d --calc="%s" --type=Byte --overwrite' \
+        % (vrts_str, avg_fname, CORRECT_NODATA_VALUE_BYTE, calc_str)
     print "Running %s:" % calccmd    
     os.system(calccmd)
     return
