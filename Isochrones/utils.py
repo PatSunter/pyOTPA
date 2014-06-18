@@ -1,6 +1,7 @@
 
 import os.path
 from datetime import datetime, timedelta
+import json
 
 def rasterName(loc_name, time, base_path=None, suffix=None):
     fname =  str.replace(loc_name, ' ', '_') \
@@ -71,3 +72,28 @@ def gen_multi_graph_iso_spec(base_path, server_url, graph_infos,
             iso_spec_list.append((server_url, otp_router_id, out_path,
                 file_suffix, iso_set_specifications))
     return iso_spec_list        
+
+def save_metadata(multi_graph_iso_set):
+    print "Saving metadata for each run in JSON format..."
+    for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
+            multi_graph_iso_set:
+        now = datetime.now()
+        d_t_str = now.strftime("%Y-%m-%d_%Hh_%Mm_%Ss")
+        meta_fname = "-".join(["isos-metadata", d_t_str]) + ".json"
+        meta_fname = os.path.join(os.path.abspath(save_path),
+            meta_fname)
+        print "...saving metadata of an isochrone set into %s" % \
+            (meta_fname)
+        meta_dict = {}
+        meta_dict['run_time'] = now.isoformat()
+        meta_dict['server_url'] = server_url
+        meta_dict['otp_router_id'] = otp_router_id
+        meta_dict['save_suffix'] = save_suffix
+        meta_dict['iso_set_specification'] = isos_spec
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        meta_file = open(meta_fname, "w")
+        json.dump(meta_dict, meta_file, indent=2)
+        meta_file.close()
+    print "Done."        
+        
