@@ -2,6 +2,7 @@
 import os.path
 from datetime import datetime, timedelta
 import json
+import time
 
 def rasterName(loc_name, time, base_path=None, suffix=None):
     fname =  str.replace(loc_name, ' ', '_') \
@@ -38,20 +39,20 @@ def get_nearby_min_diffs(nearby_minutes, num_each_side):
     mins_diffs = mins_before + [0] + mins_after
     return mins_diffs
 
+DATE_FORMAT_STR = "%Y-%m-%d"
+TIME_FORMAT_STR = "%H:%M:%S"
+
 def get_date_time_string_set(base_date, base_time, mins_diffs):
-    y_m_d = [int(ii) for ii in base_date.split('-')]
-    h_m_s = [int(ii) for ii in base_time.split(':')]
-    dtime_orig = datetime(year=y_m_d[0], month=y_m_d[1],
-        day=y_m_d[2], hour=h_m_s[0], minute=h_m_s[1],
-        second=h_m_s[2])
+    dtime_orig = datetime.strptime(base_date+base_time, 
+        DATE_FORMAT_STR+TIME_FORMAT_STR)
     date_time_set = []
     for mins_diff in mins_diffs:
         time_diff = timedelta(minutes=mins_diff)
         mt = dtime_orig + time_diff
-        date_mod = "%d-%02d-%02d" % (mt.year, mt.month, mt.day)
-        time_mod = "%02d:%02d:%02d" % (mt.hour, mt.minute, mt.second)
+        date_mod = mt.strftime(DATE_FORMAT_STR)
+        time_mod = mt.strftime(TIME_FORMAT_STR)
         date_time_set.append((date_mod, time_mod))
-    return date_time_set    
+    return date_time_set
  
 def get_raster_filenames(loc_name, date_time_str_set, base_path, suffix):
     fname_set = []
@@ -97,6 +98,8 @@ def save_metadata(multi_graph_iso_set):
         meta_file = open(meta_fname, "w")
         json.dump(meta_dict, meta_file, indent=2)
         meta_file.close()
+        # This is to ensure we don't overwrite files.
+        time.sleep(1.01)
     print "Done."        
     return fnames
         
