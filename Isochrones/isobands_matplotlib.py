@@ -24,10 +24,11 @@ from os import remove
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 
-
+def str2bool(v):
+    return v.lower() in ("yes", "true", "t", "1")
 
 def isobands(in_file, band, out_file, out_format, layer_name, attr_name, 
-    offset, interval, min_level = None):
+    offset, interval, min_level = None, upper_val_output = False):
     '''
     The method that calculates the isobands
     '''
@@ -54,8 +55,6 @@ def isobands(in_file, band, out_file, out_format, layer_name, attr_name,
     fdef = ogr.FieldDefn( attr_name, ogr.OFTReal )
     dst_layer.CreateField( fdef )
 
-
-
     x_pos = arange(geotransform_in[0], 
         geotransform_in[0] + xsize_in*geotransform_in[1], geotransform_in[1])
     y_pos = arange(geotransform_in[3], 
@@ -78,14 +77,16 @@ def isobands(in_file, band, out_file, out_format, layer_name, attr_name,
 
     contours = plt.contourf(x_grid, y_grid, raster_values, levels)
 
-    
-
     for level in range(len(contours.collections)):
         paths = contours.collections[level].get_paths()
         for path in paths:
 
             feat_out = ogr.Feature( dst_layer.GetLayerDefn())
-            feat_out.SetField( attr_name, contours.levels[level] )
+            if upper_val_output:
+                out_val = contours.levels[level] + interval
+            else:
+                out_val = contours.levels[level]
+            feat_out.SetField( attr_name, out_val )
             pol = ogr.Geometry(ogr.wkbPolygon)
 
 
@@ -136,7 +137,11 @@ if __name__ == "__main__":
     PARSER.add_argument("-f", 
         help="The output file format name  (default ESRI Shapefile)", 
         default = 'ESRI Shapefile', metavar = 'formatname')
+    PARSER.add_argument("-up",
+        help="In the output file, whether to use the upper value of an "
+            "isoband, as value name for polygons, rather than lower.",
+        default = "False", metavar='upper_val_output')    
     ARGS = PARSER.parse_args()
 
     isobands(ARGS.src_file, ARGS.b, ARGS.out_file, ARGS.f, ARGS.nln, ARGS.a, 
-        ARGS.off, ARGS.i)
+        ARGS.off, ARGS.i, upper_val_output=str2bool(ARGS.up))
