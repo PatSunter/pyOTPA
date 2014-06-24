@@ -78,8 +78,8 @@ def make_contours_isobands(save_path, file_suffix, loc_name, timestr,
     # Line below calls script that relies on Matplotlib
     # Sourced from:
     # https://github.com/rveciana/geoexamples/tree/master/python/raster_isobands
-    isobandscmd = 'isobands_matplotlib.py -a time %s %s -nln isochrones ' \
-        '-i %d' % (avg_fname, isob_fname, iso_inc)
+    isobandscmd = 'isobands_matplotlib.py -up True -a time %s %s '\
+        '-nln isochrones -i %d' % (avg_fname, isob_fname, iso_inc)
     print "Running %s:" % isobandscmd 
     os.system(isobandscmd)
     # These isobands will include all isobands up to OTP's max (128 mins). 
@@ -92,7 +92,7 @@ def make_contours_isobands(save_path, file_suffix, loc_name, timestr,
         os.unlink(isob2_fname)
     # Watch out that ogr2ogr takes _dest_ file before _src_ file.
     isobandssubsetcmd = 'ogr2ogr -where "time <= %d" %s %s' \
-        % (iso_timeset[-2], isob2_fname, isob_fname)
+        % (iso_timeset[-1], isob2_fname, isob_fname)
     print "Running %s:" % isobandssubsetcmd 
     os.system(isobandssubsetcmd)
 
