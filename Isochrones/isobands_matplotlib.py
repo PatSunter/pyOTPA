@@ -55,10 +55,16 @@ def isobands(in_file, band, out_file, out_format, layer_name, attr_name,
     fdef = ogr.FieldDefn( attr_name, ogr.OFTReal )
     dst_layer.CreateField( fdef )
 
-    x_pos = arange(geotransform_in[0], 
-        geotransform_in[0] + xsize_in*geotransform_in[1], geotransform_in[1])
-    y_pos = arange(geotransform_in[3], 
-        geotransform_in[3] + ysize_in*geotransform_in[5], geotransform_in[5])
+    # Use the geotransform pixel size value to avoid weird rounding errors in
+    # original approach.
+    x_pos = [geotransform_in[0]+geotransform_in[1]*ii \
+        for ii in range(xsize_in)]
+    y_pos = [geotransform_in[3]+geotransform_in[5]*ii \
+        for ii in range(ysize_in)]
+    #x_pos = arange(geotransform_in[0], 
+    #    geotransform_in[0] + xsize_in*geotransform_in[1], geotransform_in[1])
+    #y_pos = arange(geotransform_in[3], 
+    #    geotransform_in[3] + ysize_in*geotransform_in[5], geotransform_in[5])
     x_grid, y_grid = meshgrid(x_pos, y_pos)
 
     raster_values = band_in.ReadAsArray(0, 0, xsize_in, ysize_in)
