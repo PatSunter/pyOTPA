@@ -68,10 +68,10 @@ def gen_multi_graph_iso_spec(base_path, server_url, graph_infos,
         iso_spec_list.append((server_url, None, base_path, None,
             iso_set_specifications))
     else:    
-        for otp_router_id, graph_subdir, file_suffix in graph_infos:
+        for otp_router_id, graph_subdir, save_suffix in graph_infos:
             out_path = os.path.join(base_path, graph_subdir) 
             iso_spec_list.append((server_url, otp_router_id, out_path,
-                file_suffix, iso_set_specifications))
+                save_suffix, iso_set_specifications))
     return iso_spec_list        
 
 def save_metadata(multi_graph_iso_set):
