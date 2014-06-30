@@ -15,7 +15,9 @@ from shapely.ops import cascaded_union
 #Popular vis EPSG
 DEF_OUTPUT_EPSG = 3785
 
+# Note:- below are used in smoothing, and are in m^2.
 EDGE_PROC_AREA_CUTOFF = 3 * 1e4
+MAX_HOLE_SIZE_TO_FILL = 20 * 1e4
 
 # Hand-rolled to generate sensible results
 # Consider re change warn levels, sometimes involves filling internal holes.
@@ -147,8 +149,14 @@ def smooth_all_polygons(in_file_name, out_file_name, out_epsg=DEF_OUTPUT_EPSG,
         all_polys_new_list = []
         for poly in all_polys:
             if len(poly.interiors) > 0:
-                # Create new poly with just exteriors
-                new_poly = Polygon(poly.exterior)
+                holes_to_keep = []
+                for hi, hole in enumerate(poly.interiors):
+                    hole_poly = Polygon(hole)
+                    if hole_poly.area > MAX_HOLE_SIZE_TO_FILL:
+                        holes_to_keep.append(hole)
+                # Create new poly with exterior plus just
+                # interior holes big enough to keep
+                new_poly = Polygon(poly.exterior, holes_to_keep)
                 all_polys_new_list.append(new_poly)
             else:
                 all_polys_new_list.append(poly)
