@@ -56,7 +56,12 @@ def get_polys_at_level(in_file_name, out_file_name, level_field,
     if type(all_polys) is Polygon:
         # Just in case, we potentially only have one polygon here, so force
         # convert if so
-        all_polys = MultiPolygon([all_polys]) 
+        if all_polys.area == 0:
+            # Needed to add since shapely can't handle an empty polygon passed
+            #  as a constructor.
+            all_polys = MultiPolygon()
+        else:    
+            all_polys = MultiPolygon([all_polys]) 
     # Now save individual polygons within the multi_p_buffer to file.
     for jj, out_poly in enumerate(all_polys.geoms):
         new_feat = ogr.Feature(defn)
