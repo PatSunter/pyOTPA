@@ -9,7 +9,8 @@ GTFS_PROP_AGENCY_ID = "defaultAgencyId"
 MODE_ALLOW_BIKES = {
     'train': 'true',
     'tram': 'false',
-    'bus': 'false' }
+    'bus': 'false',
+    'bus-mway': 'false'}
 
 GRAPH_JAR='graph-builder.jar'
 
@@ -39,7 +40,7 @@ def create_graph_xml(graph_spec, graph_full_dir, xml_file_base,
 
     all_gtfs_xml_strs = ''
     PRE = ' ' * 6 * 4
-    for mode in ['train', 'tram', 'bus']:
+    for mode in ['train', 'tram', 'bus', 'bus-mway']:
         if mode not in graph_spec:
             continue
         all_gtfs_xml_strs += PRE + "<!-- %s GTFS -->\n" % mode.title()
