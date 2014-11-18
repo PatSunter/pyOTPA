@@ -134,7 +134,6 @@ def make_comparison_files(run_dicts, comparison_run_name,
         zones_shp_file_name = run_dicts[comparison_run_name]['zones']
         taz_tuples_comp = taz_files.read_tazs_from_shp(zones_shp_file_name)
 
-    #nzones = get_num_zones(csv_zone_locs_fname)
     max_zone_num = max(itertools.imap(operator.itemgetter(0), taz_tuples_comp))
     # Note: add one, since our OD points start from 1, and we will avoid
     #  converting back to zero etc to access the matrix.
