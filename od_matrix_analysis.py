@@ -4,9 +4,14 @@
 
 # Uses OGR library for shape file manipulation aspects.
 
-import numpy
 import csv
 import os
+import operator
+import itertools
+
+import numpy
+
+import taz_files
 
 ### General utility functions - OTP
 
@@ -165,7 +170,7 @@ def readComparisonFile(compfilename):
     for ii, row in enumerate(compreader):
         nrows += 1
 
-    routesArray = numpy.zeros((nrows, 2))
+    routesArray = []
     case1Times = numpy.zeros(nrows)
     case2Times = numpy.zeros(nrows)
     #Restart, now we know array sizes
@@ -174,14 +179,14 @@ def readComparisonFile(compfilename):
     #headers
     compreader.next()
     for ii, row in enumerate(compreader):
-        routesArray[ii] = [row[0], row[1]]
+        routesArray.append((int(row[0]), int(row[1])))
         case1Times[ii] = row[2]
         case2Times[ii] = row[3]
 
     compfile.close()
     return routesArray, case1Times, case2Times
 
-def createShapefile(routesArray, latlons, case1Times, case2Times, caseNames,
+def createShapefile(routesArray, lonlats, case1Times, case2Times, caseNames,
         shapefilename):
     """Creates a Shape file stating the difference between times in two
     OD matrices, which have been 'unrolled' as large arrays listing 
@@ -192,7 +197,8 @@ def createShapefile(routesArray, latlons, case1Times, case2Times, caseNames,
     N.B. :- thanks for overall strategy here are due to author of
     https://github.com/glennon/FlowpyGIS"""
 
-    import ogr
+    import osgeo.ogr
+    from osgeo import ogr
 
     print "Creating shapefile of route lines with time attributes to file"\
         " %s ..." % (shapefilename)
@@ -228,8 +234,8 @@ def createShapefile(routesArray, latlons, case1Times, case2Times, caseNames,
         case1time = case1Times[ii]
         case2time = case2Times[ii]
         linester = ogr.Geometry(ogr.wkbLineString)
-        linester.AddPoint(latlons[originID][1], latlons[originID][0])
-        linester.AddPoint(latlons[destID][1], latlons[destID][0])
+        linester.AddPoint(lonlats[originID][0], lonlats[originID][1])
+        linester.AddPoint(lonlats[destID][0], lonlats[destID][1])
 
         featureDefn = layer.GetLayerDefn()
         feature = ogr.Feature(featureDefn)
@@ -252,4 +258,5 @@ def createShapefile(routesArray, latlons, case1Times, case2Times, caseNames,
     ds.Destroy()
     print "Done."
     return
+
 

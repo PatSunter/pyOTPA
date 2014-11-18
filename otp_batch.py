@@ -7,6 +7,7 @@ import itertools
 import makepaths
 import taz_files
 import make_od_matrix
+import od_matrix_analysis
 
 TAG_GRAPH = "REPLACE_GRAPH_NAME"
 TAG_RUN_NAME = "REPLACE_RUN_NAME"
@@ -114,4 +115,67 @@ def make_od_matrices(run_dicts, csv_zone_locs_fname=None):
             (run_name, output_csv_filename)
         make_od_matrix.make_od_matrix(output_csv_filename,
             run_results_path, taz_tuples)
+
+def make_comparison_files(run_dicts, comparison_run_name, 
+        nv_routes_interest_fname=None, csv_zone_locs_fname=None):
+    """Make comparison spreadsheets, and GIS files, of travel times between
+    each run in run_dicts, and times in the comparison_run_name run.
+    Requires that the runs specified in run_dicts already exist, and OD matrix
+    CSV files have been created in each directory using make_od_matrix.
+    Only compare routes defined by OD pairs in the Netview file
+    nv_routes_interest_fname. (TODO:- would be good to generalise the
+    latter.)"""
+    # Only import this here, since its only essential for running comparisons
+    import numpy
+
+    if csv_zone_locs_fname:
+        taz_tuples_comp = taz_files.read_tazs_from_csv(csv_zone_locs_fname)
+    else:
+        zones_shp_file_name = run_dicts[comparison_run_name]['zones']
+        taz_tuples_comp = taz_files.read_tazs_from_shp(zones_shp_file_name)
+
+    #nzones = get_num_zones(csv_zone_locs_fname)
+    max_zone_num = max(itertools.imap(operator.itemgetter(0), taz_tuples_comp))
+    # Note: add one, since our OD points start from 1, and we will avoid
+    #  converting back to zero etc to access the matrix.
+    asize = (max_zone_num+1, max_zone_num+1)
+
+    otp_od_matrix_curr_fname = get_od_matrix_fname(comparison_run_name)
+    od_matrix_curr = numpy.zeros(asize)
+    od_matrix_analysis.readOTPMatrix(otp_od_matrix_curr_fname, od_matrix_curr)
+
+    if nv_routes_interest_fname:
+        nv_mat = numpy.zeros(asize)
+        # To get nroutes, really just need number of entries in this file ...
+        nroutes = od_matrix_analysis.readNVMatrix(nv_routes_interest_fname, nv_mat)
+        routesArray = od_matrix_analysis.readNVRouteIDs(nv_routes_interest_fname,
+            nroutes)
+    else:
+        taz_ids_comp = itertools.imap(operator.itemgetter(0), taz_tuples_comp)
+        routesArray = list(itertools.permutations(taz_ids_comp, 2))
+
+    lonlats = numpy.zeros((max_zone_num+1, 2))
+    for taz_tuple in taz_tuples_comp:
+        lonlats[int(taz_tuple[0])] = [taz_tuple[1], taz_tuple[2]]
+    
+    for run_name, run_data in run_dicts.iteritems():
+        if run_name == comparison_run_name: continue
+
+        od_matrix_new_fname = get_od_matrix_fname(run_name)
+        if not csv_zone_locs_fname:
+            zones_shp_file_name = run_data['zones']
+            taz_tuples = taz_files.read_tazs_from_shp(zones_shp_file_name)
+            max_zone_num = max(itertools.imap(operator.itemgetter(0),
+                taz_tuples))
+            asize = (max_zone_num+1, max_zone_num+1)
+        od_matrix_new = numpy.zeros(asize)
+        od_matrix_analysis.readOTPMatrix(od_matrix_new_fname, od_matrix_new)
+        comp_csv_filename = get_comp_csv_fname(run_name)
+        od_matrix_analysis.saveComparisonFile(routesArray, od_matrix_curr,
+            od_matrix_new, comp_csv_filename, ['OTPCUR', 'OTPNEW'])
+        routesArray, otpCurrTimes, otpNew_Times = \
+            od_matrix_analysis.readComparisonFile(comp_csv_filename)
+        shapefilename = get_comp_shapefile_fname(run_name)
+        od_matrix_analysis.createShapefile(routesArray, lonlats, otpCurrTimes,
+            otpNew_Times, ['OTPCUR', 'OTPNEW'], shapefilename)    
 
