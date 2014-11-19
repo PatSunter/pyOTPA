@@ -129,8 +129,8 @@ def saveComparisonFile(routesArray, od_mat_1, od_mat_2, compfilename,
     for ii, route in enumerate(routesArray):
         originID = route[0]
         destID = route[1]
-        time_1 = od_mat_1[originID, destID]
-        time_2 = od_mat_2[originID, destID]
+        time_1 = int(od_mat_1[originID, destID])
+        time_2 = int(od_mat_2[originID, destID])
         
         # Checking for OTP times that are null for some reason.
         # NB: ideally would be good to keep some info with a matrix so
@@ -171,8 +171,8 @@ def readComparisonFile(compfilename):
         nrows += 1
 
     routesArray = []
-    case1Times = numpy.zeros(nrows)
-    case2Times = numpy.zeros(nrows)
+    case1Times = []
+    case2Times = []
     #Restart, now we know array sizes
     compfile.seek(0)
     compreader = csv.reader(compfile, delimiter=',')
@@ -180,9 +180,8 @@ def readComparisonFile(compfilename):
     compreader.next()
     for ii, row in enumerate(compreader):
         routesArray.append((int(row[0]), int(row[1])))
-        case1Times[ii] = row[2]
-        case2Times[ii] = row[3]
-
+        case1Times.append(int(row[2]))
+        case2Times.append(int(row[3]))
     compfile.close()
     return routesArray, case1Times, case2Times
 
@@ -259,4 +258,103 @@ def createShapefile(routesArray, lonlats, case1Times, case2Times, caseNames,
     print "Done."
     return
 
+def compute_comparison_stats(comp_csv_filename):
+    routesArray, otp_curr_times, otp_new_times = \
+        readComparisonFile(comp_csv_filename)
+    otp_diffs = [curr - new for new, curr \
+        in zip(otp_new_times, otp_curr_times)]
+    st = {
+        'total_trips' : len(otp_curr_times),
+        'lost_trips' : 0,
+        'added_trips' : 0,
+        'valid_trips_both' : 0,
+        'faster_trips' : 0,
+        'slower_trips' : 0,
+        'same_trips' : 0,
+        'slower_total_change' : 0,
+        'faster_total_change' : 0,
+        'valid_total_curr' : 0,
+        'valid_total_new' : 0,
+        'valid_total_diff' : 0,
+        }
+    for ii, (otp_curr_t, otp_new_t, otp_diff) in enumerate(zip(otp_curr_times,
+            otp_new_times, otp_diffs)):
+        if otp_curr_t <= 0 and otp_new_t <= 0:
+            # Trip is invalid in both.
+            continue
+        if otp_curr_t > 0 and otp_new_t <= 0:
+            st['lost_trips'] += 1
+        elif otp_curr_t <= 0 and otp_new_t > 0:
+            st['added_trips'] += 1
+        else:
+            st['valid_trips_both'] += 1
+            st['valid_total_curr'] += otp_curr_t 
+            st['valid_total_new'] += otp_new_t
+            st['valid_total_diff'] += otp_diff
+            if otp_diff == 0:
+                st['same_trips'] += 1
+            elif otp_curr_t < otp_new_t: 
+                st['slower_trips'] += 1
+                st['slower_total_change'] += otp_diff
+            elif otp_new_t < otp_curr_t:
+                st['faster_trips'] += 1
+                st['faster_total_change'] += otp_diff
+    # Compute averages.
+    if st['valid_trips_both'] > 0:
+        st['avg_curr_min'] = \
+            (st['valid_total_curr'] / float(st['valid_trips_both'])) / 60.0
+        st['avg_new_min'] = \
+            (st['valid_total_new'] / float(st['valid_trips_both'])) / 60.0
+        st['avg_diff_min'] = \
+            (st['valid_total_diff'] / float(st['valid_trips_both'])) / 60.0
+        st['faster_trips_pct'] = \
+            st['slower_trips'] / float(st['valid_trips_both']) * 100.0
+        st['slower_trips_pct'] = \
+            st['faster_trips'] / float(st['valid_trips_both']) * 100.0
+        st['faster_trips_pct'] = \
+            st['slower_trips'] / float(st['valid_trips_both']) * 100.0
+        st['same_trips_pct'] = \
+            st['same_trips'] / float(st['valid_trips_both']) * 100.0
+    else:
+        st['avg_curr_min'] = 0
+        st['avg_new_min'] = 0
+        st['avg_diff_min'] = 0
+        st['faster_trips_pct'] = 0
+        st['slower_trips_pct'] = 0
+        st['faster_trips_pct'] = 0
+        st['same_trips_pct'] = 0
+    if st['valid_total_curr']:
+        st['avg_diff_perc'] = \
+            st['valid_total_diff'] / st['valid_total_curr'] * 100.0
+    else:        
+        st['avg_diff_perc'] = 0
+    if st['slower_trips']:
+        st['avg_slower'] = st['slower_total_change'] / float(st['slower_trips'])
+    else:
+        st['avg_slower'] = 0
+    if st['faster_trips']:          
+        st['avg_faster'] = st['faster_total_change'] / float(st['faster_trips'])
+    else:
+        st['avg_faster'] = 0
+    return st
 
+def print_comparison_stats(stats_dict):
+    st = stats_dict
+    print "Total trips:-"
+    print " %d total, %d both valid, %d lost, %d added." % \
+        (st['total_trips'], st['valid_trips_both'], \
+         st['lost_trips'], st['added_trips'])
+    print "Aggregate change:-"
+    print " For trips valid in both, avg trip time changed from %.1f "\
+        "minutes to %.1f minutes.\n" \
+        " A change of %.1f min (%.2f%%)." \
+        % (st['avg_curr_min'], st['avg_new_min'], \
+           st['avg_diff_min'], st['avg_diff_perc'])
+    print "Trip breakdown:"
+    print "%5d trips (%.2f%%) of unchanged duration.\n"\
+        "%5d trips (%.2f%%) were slower (avg change of %.1f min).\n"\
+        "%5d trips (%.2f%%) were faster (avg change of %.1f min)."\
+        % (st['same_trips'], st['same_trips_pct'], \
+          st['slower_trips'], st['slower_trips_pct'], st['avg_slower'], \
+           st['faster_trips'], st['faster_trips_pct'], st['avg_faster'])
+    print ""
