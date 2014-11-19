@@ -35,21 +35,27 @@ def get_comp_shapefile_fname(run_name):
         'OD_route_infos-%s.shp' % run_name)
 
 def create_routing_result_output_paths(results_base_path, run_dicts,
-        csv_zone_locs_fname=None):
+        csv_zone_locs_fname=None, runs_to_process=None):
     if csv_zone_locs_fname:
         taz_tuples = taz_files.read_tazs_from_csv(csv_zone_locs_fname)
         taz_ids = itertools.imap(operator.itemgetter(0), taz_tuples)
-    for run_name, run_info in run_dicts.iteritems():
+    if runs_to_process == None:
+        runs_to_process = run_dicts.keys()
+    for run_name in runs_to_process:
+        run_data = run_dicts[run_name]
         if not csv_zone_locs_fname:
-            zones_shp_file_name = run_info['zones']
+            zones_shp_file_name = run_data['zones']
             taz_tuples = taz_files.read_tazs_from_shp(zones_shp_file_name)
             taz_ids = itertools.imap(operator.itemgetter(0), taz_tuples)
         makepaths.make_paths(taz_ids,
             os.path.join(results_base_path, run_name))
 
 def create_batch_config_files(template_filename, graphs_path,
-        results_base_path, run_dicts):
-    for run_name, run_data in run_dicts.iteritems():
+        results_base_path, run_dicts, runs_to_process=None):
+    if runs_to_process == None:
+        runs_to_process = run_dicts.keys()
+    for run_name in runs_to_process:
+        run_data = run_dicts[run_name]
         create_batch_config_file(template_filename, graphs_path,
             results_base_path, run_name, run_data)
 
@@ -97,15 +103,21 @@ def run_batch_calc(run_name, run_data, otp_config):
     os.system(run_cmd)
     print "done"
 
-def run_batch_calcs(template_filename, run_dicts, otp_config):
-    for run_name, run_data in run_dicts.iteritems():
+def run_batch_calcs(template_filename, run_dicts, otp_config,
+        runs_to_process=None):
+    if runs_to_process == None:
+        runs_to_process = run_dicts.keys()
+    for run_name in runs_to_process:
+        run_data = run_dicts[run_name]
         run_batch_calc(run_name, run_data, otp_config)
 
-def make_od_matrices(run_dicts, csv_zone_locs_fname=None):
+def make_od_matrices(run_dicts, csv_zone_locs_fname=None, runs_to_process=None):
     if csv_zone_locs_fname:
         taz_tuples = taz_files.read_tazs_from_csv(csv_zone_locs_fname)
-
-    for run_name, run_data in run_dicts.iteritems():
+    if runs_to_process == None:
+        runs_to_process = run_dicts.keys()
+    for run_name in runs_to_process:
+        run_data = run_dicts[run_name]
         if not csv_zone_locs_fname:
             zones_shp_file_name = run_data['zones']
             taz_tuples = taz_files.read_tazs_from_shp(zones_shp_file_name)
@@ -117,7 +129,8 @@ def make_od_matrices(run_dicts, csv_zone_locs_fname=None):
             run_results_path, taz_tuples)
 
 def make_comparison_files(run_dicts, comparison_run_name, 
-        nv_routes_interest_fname=None, csv_zone_locs_fname=None):
+        nv_routes_interest_fname=None, csv_zone_locs_fname=None,
+        runs_to_process=None):
     """Make comparison spreadsheets, and GIS files, of travel times between
     each run in run_dicts, and times in the comparison_run_name run.
     Requires that the runs specified in run_dicts already exist, and OD matrix
@@ -157,7 +170,10 @@ def make_comparison_files(run_dicts, comparison_run_name,
     for taz_tuple in taz_tuples_comp:
         lonlats[int(taz_tuple[0])] = [taz_tuple[1], taz_tuple[2]]
     
-    for run_name, run_data in run_dicts.iteritems():
+    if runs_to_process == None:
+        runs_to_process = run_dicts.keys()
+    for run_name in runs_to_process:
+        run_data = run_dicts[run_name]
         if run_name == comparison_run_name: continue
 
         od_matrix_new_fname = get_od_matrix_fname(run_name)
@@ -177,4 +193,4 @@ def make_comparison_files(run_dicts, comparison_run_name,
         shapefilename = get_comp_shapefile_fname(run_name)
         od_matrix_analysis.createShapefile(routesArray, lonlats, otpCurrTimes,
             otpNew_Times, ['OTPCUR', 'OTPNEW'], shapefilename)    
-
+    return
