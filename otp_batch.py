@@ -40,24 +40,30 @@ def create_routing_result_output_paths(results_base_path, run_dicts,
         taz_tuples = taz_files.read_tazs_from_csv(csv_zone_locs_fname)
         taz_ids = itertools.imap(operator.itemgetter(0), taz_tuples)
     if runs_to_process == None:
-        runs_to_process = run_dicts.keys()
+        runs_to_process = sorted(run_dicts.keys())
     for run_name in runs_to_process:
         run_data = run_dicts[run_name]
         if not csv_zone_locs_fname:
             zones_shp_file_name = run_data['zones']
             taz_tuples = taz_files.read_tazs_from_shp(zones_shp_file_name)
             taz_ids = itertools.imap(operator.itemgetter(0), taz_tuples)
-        makepaths.make_paths(taz_ids,
+        out_subdirs = makepaths.get_paths(taz_ids,
             os.path.join(results_base_path, run_name))
+        print "Making %d paths under dir %s" \
+            % (len(out_subdirs), \
+               os.path.join(results_base_path, run_name))
+        makepaths.make_paths(out_subdirs)
+    print ""        
 
 def create_batch_config_files(template_filename, graphs_path,
         results_base_path, run_dicts, runs_to_process=None):
     if runs_to_process == None:
-        runs_to_process = run_dicts.keys()
+        runs_to_process = sorted(run_dicts.keys())
     for run_name in runs_to_process:
         run_data = run_dicts[run_name]
         create_batch_config_file(template_filename, graphs_path,
             results_base_path, run_name, run_data)
+    print ""            
 
 def create_batch_config_file(template_filename, graphs_path, 
         results_base_path, run_name, run_data):
@@ -104,18 +110,23 @@ def run_batch_calc(run_name, run_data, otp_config):
     print "done"
 
 def run_batch_calcs(template_filename, run_dicts, otp_config,
-        runs_to_process=None):
+        runs_to_process=None, re_run=True):
     if runs_to_process == None:
-        runs_to_process = run_dicts.keys()
+        runs_to_process = sorted(run_dicts.keys())
     for run_name in runs_to_process:
         run_data = run_dicts[run_name]
-        run_batch_calc(run_name, run_data, otp_config)
+        out_files_exist = False
+        if os.path.exists(get_log_fname(run_name)):
+            out_files_exist = True
+        if re_run == True or not out_files_exist:
+            run_batch_calc(run_name, run_data, otp_config)
+    print ""            
 
 def make_od_matrices(run_dicts, csv_zone_locs_fname=None, runs_to_process=None):
     if csv_zone_locs_fname:
         taz_tuples = taz_files.read_tazs_from_csv(csv_zone_locs_fname)
     if runs_to_process == None:
-        runs_to_process = run_dicts.keys()
+        runs_to_process = sorted(run_dicts.keys())
     for run_name in runs_to_process:
         run_data = run_dicts[run_name]
         if not csv_zone_locs_fname:
@@ -127,6 +138,7 @@ def make_od_matrices(run_dicts, csv_zone_locs_fname=None, runs_to_process=None):
             (run_name, output_csv_filename)
         make_od_matrix.make_od_matrix(output_csv_filename,
             run_results_path, taz_tuples)
+    print ""            
 
 def make_comparison_files(run_dicts, comparison_run_name, 
         nv_routes_interest_fname=None, csv_zone_locs_fname=None,
@@ -171,7 +183,7 @@ def make_comparison_files(run_dicts, comparison_run_name,
         lonlats[int(taz_tuple[0])] = [taz_tuple[1], taz_tuple[2]]
     
     if runs_to_process == None:
-        runs_to_process = run_dicts.keys()
+        runs_to_process = sorted(run_dicts.keys())
     for run_name in runs_to_process:
         run_data = run_dicts[run_name]
         if run_name == comparison_run_name: continue
@@ -194,3 +206,15 @@ def make_comparison_files(run_dicts, comparison_run_name,
         od_matrix_analysis.createShapefile(routesArray, lonlats, otpCurrTimes,
             otpNew_Times, ['OTPCUR', 'OTPNEW'], shapefilename)    
     return
+    print ""            
+
+def print_comparison_stats(run_dicts, comparison_run_name, 
+        runs_to_process=None):
+    if runs_to_process == None:
+        runs_to_process = sorted(run_dicts.keys())
+    for run_name in runs_to_process:
+        if run_name == comparison_run_name: continue
+        print "Computing stats for run '%s':" % run_name
+        comp_csv_filename = get_comp_csv_fname(run_name)
+        stats = od_matrix_analysis.compute_comparison_stats(comp_csv_filename)
+        od_matrix_analysis.print_comparison_stats(stats)
