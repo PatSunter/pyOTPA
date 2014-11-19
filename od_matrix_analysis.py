@@ -258,6 +258,8 @@ def createShapefile(routesArray, lonlats, case1Times, case2Times, caseNames,
     print "Done."
     return
 
+MINUTE_BREAKS = [1, 10, 30, 60]
+
 def compute_comparison_stats(comp_csv_filename):
     routesArray, otp_curr_times, otp_new_times = \
         readComparisonFile(comp_csv_filename)
@@ -276,7 +278,14 @@ def compute_comparison_stats(comp_csv_filename):
         'valid_total_curr' : 0,
         'valid_total_new' : 0,
         'valid_total_diff' : 0,
+        'trips_in_range' : {}
         }
+    for min_break in MINUTE_BREAKS:
+        st['trips_in_range'][-min_break] = 0
+        st['trips_in_range'][min_break] = 0
+    st['trips_in_range']['-inf'] = 0
+    st['trips_in_range']['inf'] = 0
+        
     for ii, (otp_curr_t, otp_new_t, otp_diff) in enumerate(zip(otp_curr_times,
             otp_new_times, otp_diffs)):
         if otp_curr_t <= 0 and otp_new_t <= 0:
@@ -291,14 +300,31 @@ def compute_comparison_stats(comp_csv_filename):
             st['valid_total_curr'] += otp_curr_t 
             st['valid_total_new'] += otp_new_t
             st['valid_total_diff'] += otp_diff
+            abs_diff_min = abs(otp_diff / 60.0)
             if otp_diff == 0:
                 st['same_trips'] += 1
             elif otp_curr_t < otp_new_t: 
                 st['slower_trips'] += 1
                 st['slower_total_change'] += otp_diff
+                range_found = False
+                for min_break in MINUTE_BREAKS:
+                    if abs_diff_min <= abs(min_break):
+                        st['trips_in_range'][-min_break] += 1
+                        range_found = True
+                        break
+                if range_found == False:
+                    st['trips_in_range']["-inf"] += 1
             elif otp_new_t < otp_curr_t:
                 st['faster_trips'] += 1
                 st['faster_total_change'] += otp_diff
+                range_found = False
+                for min_break in MINUTE_BREAKS:
+                    if abs_diff_min <= abs(min_break):
+                        st['trips_in_range'][min_break] += 1
+                        range_found = True
+                        break
+                if range_found == False:
+                    st['trips_in_range']["inf"] += 1
     # Compute averages.
     if st['valid_trips_both'] > 0:
         st['avg_curr_min'] = \
@@ -325,7 +351,7 @@ def compute_comparison_stats(comp_csv_filename):
         st['same_trips_pct'] = 0
     if st['valid_total_curr']:
         st['avg_diff_perc'] = \
-            st['valid_total_diff'] / st['valid_total_curr'] * 100.0
+            st['valid_total_diff'] / float(st['valid_total_curr']) * 100.0
     else:        
         st['avg_diff_perc'] = 0
     if st['slower_trips']:
@@ -357,4 +383,19 @@ def print_comparison_stats(stats_dict):
         % (st['same_trips'], st['same_trips_pct'], \
           st['slower_trips'], st['slower_trips_pct'], st['avg_slower'], \
            st['faster_trips'], st['faster_trips_pct'], st['avg_faster'])
+    print "Detailed trip breakdown:"
+    prev_tval = 0
+    for tval in MINUTE_BREAKS:
+        print "%5d trips in range (%d,%d] mins slower." % \
+            (st['trips_in_range'][-tval], prev_tval, tval)
+        prev_tval = tval
+    print "%5d trips > %d mins slower." % \
+        (st['trips_in_range']["-inf"], prev_tval)
+    prev_tval = 0
+    for tval in MINUTE_BREAKS:
+        print "%5d trips in range (%d,%s] mins faster." % \
+            (st['trips_in_range'][tval], prev_tval, tval)
+        prev_tval = tval
+    print "%5d trips > %d mins faster." % \
+        (st['trips_in_range']["inf"], prev_tval)
     print ""
