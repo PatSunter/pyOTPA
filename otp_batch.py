@@ -27,8 +27,12 @@ def get_log_fname(run_name):
 def get_od_matrix_fname(run_name):
     return os.path.join(os.getcwd(), run_name, 'tazs_od_matrix.csv')
 
-def get_comp_csv_fname(run_name):
-    return os.path.join(os.getcwd(), run_name, 'ODs_Comparison_Basic.csv')
+def get_comp_csv_fname(run_name, comparison_ext=None):
+    if comparison_ext:
+        comp_fname ='ODs_Comparison_Basic-%s.csv' % comparison_ext
+    else:    
+        comp_fname ='ODs_Comparison_Basic.csv'
+    return os.path.join(os.getcwd(), run_name, comp_fname)
 
 def get_comp_shapefile_fname(run_name):
     return os.path.join(os.getcwd(), run_name,
@@ -142,7 +146,7 @@ def make_od_matrices(run_dicts, csv_zone_locs_fname=None, runs_to_process=None):
 
 def make_comparison_files(run_dicts, comparison_run_name, 
         nv_routes_interest_fname=None, csv_zone_locs_fname=None,
-        runs_to_process=None):
+        runs_to_process=None, comparison_ext=None):
     """Make comparison spreadsheets, and GIS files, of travel times between
     each run in run_dicts, and times in the comparison_run_name run.
     Requires that the runs specified in run_dicts already exist, and OD matrix
@@ -197,7 +201,7 @@ def make_comparison_files(run_dicts, comparison_run_name,
             asize = (max_zone_num+1, max_zone_num+1)
         od_matrix_new = numpy.zeros(asize)
         od_matrix_analysis.readOTPMatrix(od_matrix_new_fname, od_matrix_new)
-        comp_csv_filename = get_comp_csv_fname(run_name)
+        comp_csv_filename = get_comp_csv_fname(run_name, comparison_ext)
         od_matrix_analysis.saveComparisonFile(routesArray, od_matrix_curr,
             od_matrix_new, comp_csv_filename, ['OTPCUR', 'OTPNEW'])
         routesArray, otpCurrTimes, otpNew_Times = \
@@ -209,12 +213,12 @@ def make_comparison_files(run_dicts, comparison_run_name,
     print ""            
 
 def print_comparison_stats(run_dicts, comparison_run_name, 
-        runs_to_process=None):
+        runs_to_process=None, comparison_ext=None):
     if runs_to_process == None:
         runs_to_process = sorted(run_dicts.keys())
     for run_name in runs_to_process:
         if run_name == comparison_run_name: continue
         print "Computing stats for run '%s':" % run_name
-        comp_csv_filename = get_comp_csv_fname(run_name)
+        comp_csv_filename = get_comp_csv_fname(run_name, comparison_ext)
         stats = od_matrix_analysis.compute_comparison_stats(comp_csv_filename)
         od_matrix_analysis.print_comparison_stats(stats)
