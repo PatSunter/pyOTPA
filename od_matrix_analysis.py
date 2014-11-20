@@ -333,22 +333,19 @@ def compute_comparison_stats(comp_csv_filename):
             (st['valid_total_new'] / float(st['valid_trips_both'])) / 60.0
         st['avg_diff_min'] = \
             (st['valid_total_diff'] / float(st['valid_trips_both'])) / 60.0
-        st['faster_trips_pct'] = \
-            st['slower_trips'] / float(st['valid_trips_both']) * 100.0
-        st['slower_trips_pct'] = \
-            st['faster_trips'] / float(st['valid_trips_both']) * 100.0
-        st['faster_trips_pct'] = \
-            st['slower_trips'] / float(st['valid_trips_both']) * 100.0
         st['same_trips_pct'] = \
             st['same_trips'] / float(st['valid_trips_both']) * 100.0
+        st['slower_trips_pct'] = \
+            st['slower_trips'] / float(st['valid_trips_both']) * 100.0
+        st['faster_trips_pct'] = \
+            st['faster_trips'] / float(st['valid_trips_both']) * 100.0
     else:
         st['avg_curr_min'] = 0
         st['avg_new_min'] = 0
         st['avg_diff_min'] = 0
-        st['faster_trips_pct'] = 0
+        st['same_trips_pct'] = 0
         st['slower_trips_pct'] = 0
         st['faster_trips_pct'] = 0
-        st['same_trips_pct'] = 0
     if st['valid_total_curr']:
         st['avg_diff_perc'] = \
             st['valid_total_diff'] / float(st['valid_total_curr']) * 100.0
