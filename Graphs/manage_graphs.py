@@ -132,7 +132,7 @@ def create_graphs(graph_name_base, process_gtfs_entry_func, list_iterator_func,
         for mode in all_modes:
             graph_spec[mode] = []
             mode_non_orig[mode] = False
-            mode_upgraded[mode] = False
+            mode_upgraded[mode] = ""
             mode_versions[mode] = None
         for mode_i, mode_ext in enumerate(mode_combo):
             mode = mode_specs[mode_i][0]
@@ -152,7 +152,8 @@ def create_graphs(graph_name_base, process_gtfs_entry_func, list_iterator_func,
             mode_str = ""
             if mode_non_orig[mode]:
                 if mode_upgraded[mode]:
-                    mode_str = '_upgraded_%s' % MODE_PLURALS[mode]
+                    mode_str = '_%s_%s' \
+                        % (mode_upgraded[mode], MODE_PLURALS[mode])
                 else:
                     mode_str += '_non_upgraded_%s' % MODE_PLURALS[mode]
                 if mode_versions[mode]:
