@@ -375,11 +375,13 @@ def print_comparison_stats(stats_dict):
            st['avg_diff_min'], st['avg_diff_perc'])
     print "Trip breakdown:"
     print "%5d trips (%.2f%%) of unchanged duration.\n"\
-        "%5d trips (%.2f%%) were slower (avg change of %.1f min).\n"\
-        "%5d trips (%.2f%%) were faster (avg change of %.1f min)."\
+        "%5d trips (%.2f%%) were slower (avg change of %.1f sec (%.1f min)).\n"\
+        "%5d trips (%.2f%%) were faster (avg change of %.1f sec (%.1f min))."\
         % (st['same_trips'], st['same_trips_pct'], \
-          st['slower_trips'], st['slower_trips_pct'], st['avg_slower'], \
-           st['faster_trips'], st['faster_trips_pct'], st['avg_faster'])
+           st['slower_trips'], st['slower_trips_pct'], \
+           st['avg_slower'], st['avg_slower'] / 60.0, \
+           st['faster_trips'], st['faster_trips_pct'], \
+           st['avg_faster'], st['avg_faster'] / 60.0 )
     print "Detailed trip breakdown:"
     prev_tval = 0
     for tval in MINUTE_BREAKS:
