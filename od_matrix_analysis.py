@@ -258,7 +258,7 @@ def createShapefile(routesArray, lonlats, case1Times, case2Times, caseNames,
     print "Done."
     return
 
-MINUTE_BREAKS = [1, 10, 30, 60]
+MINUTE_BREAKS = [1, 10, 20, 30, 60]
 
 def compute_comparison_stats(comp_csv_filename):
     routesArray, otp_curr_times, otp_new_times = \
@@ -383,18 +383,17 @@ def print_comparison_stats(stats_dict):
            st['faster_trips'], st['faster_trips_pct'], \
            st['avg_faster'], st['avg_faster'] / 60.0 )
     print "Detailed trip breakdown:"
-    prev_tval = 0
-    for tval in MINUTE_BREAKS:
-        print "%5d trips in range (%d,%d] mins slower." % \
-            (st['trips_in_range'][-tval], prev_tval, tval)
-        prev_tval = tval
-    print "%5d trips > %d mins slower." % \
-        (st['trips_in_range']["-inf"], prev_tval)
-    prev_tval = 0
-    for tval in MINUTE_BREAKS:
-        print "%5d trips in range (%d,%s] mins faster." % \
-            (st['trips_in_range'][tval], prev_tval, tval)
-        prev_tval = tval
-    print "%5d trips > %d mins faster." % \
-        (st['trips_in_range']["inf"], prev_tval)
+    sign_word_pairs = [(-1, "slower"), (1, "faster")]
+    for sign, speed_word in sign_word_pairs:
+        prev_tval = 0
+        for tval in MINUTE_BREAKS:
+            trips_in_range = st['trips_in_range'][sign * tval]
+            perc_in_range = trips_in_range / float(st['valid_trips_both']) * 100
+            print "%5d trips (%5.2f%%) in range (%d,%d] mins %s." % \
+                (trips_in_range, perc_in_range, prev_tval, tval, speed_word)
+            prev_tval = tval
+        inf_word = "-inf" if sign < 0 else "inf"
+        trips_in_last_range = st['trips_in_range'][inf_word]
+        print "%5d trips > %d mins %s." % \
+            (trips_in_last_range, prev_tval, speed_word)
     print ""
