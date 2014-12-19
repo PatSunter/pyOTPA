@@ -120,7 +120,9 @@ def run_batch_calcs(template_filename, run_dicts, otp_config,
     for run_name in runs_to_process:
         run_data = run_dicts[run_name]
         out_files_exist = False
-        if os.path.exists(get_log_fname(run_name)):
+        run_log_fname = get_log_fname(run_name)
+        if os.path.exists(run_log_fname) \
+                and os.path.getsize(run_log_fname) > 0:
             out_files_exist = True
         if re_run == True or not out_files_exist:
             run_batch_calc(run_name, run_data, otp_config)
