@@ -1,8 +1,9 @@
 
+import os.path
 import random
 from datetime import time
 
-from osgeo import ogr
+from osgeo import ogr, osr
 
 class RandomTimeGenerator:
     def __init__(self, seed):
@@ -30,13 +31,15 @@ class BasicRandomLocGenerator:
         return (loc_x, loc_y)
 
 class WithinZoneLocGenerator:
-    def __init__(self, seed, zone_polys_dict):
+    def __init__(self, seed, zone_polys_dict, constraint_checker=None):
         self._random_seed = seed
         self._randomiser = random.Random(seed)
         self._zone_polys_dict = zone_polys_dict
+        self._constraint_checker = constraint_checker
     
     def gen_loc_within_zone(self, zone_name):
-        zone_poly = self._zone_polys_dict[zone_name]
+        zone_shp = self._zone_polys_dict[zone_name]
+        zone_poly = zone_shp.GetGeometryRef()
         zone_env = zone_poly.GetEnvelope()
         while True:
             # First generate a random point within the extents
@@ -45,9 +48,13 @@ class WithinZoneLocGenerator:
             loc_pt = ogr.Geometry(ogr.wkbPoint)
             loc_pt.AddPoint(loc_x, loc_y)
             if zone_poly.Contains(loc_pt):
-                break
-            else:
-                loc_pt.Destroy()
+                if not self._constraint_checker:
+                    break
+                else:
+                    # Also check the location passes any constraints.
+                    if self._constraint_checker.is_valid(loc_pt):
+                        break
+            loc_pt.Destroy()
         return loc_pt
 
 class OD_Based_TripGenerator:
@@ -100,6 +107,57 @@ class OD_Based_TripGenerator:
             float(self._od_counts_total)))
         return scaled_trip_cnt
 
+
+TRIP_LYR_NAME = "trips"
+TRIP_ID_FIELD = "id"
+TRIP_ORIGIN_SLA_FIELD = "orig_sla"
+TRIP_DEST_SLA_FIELD = "dest_sla"
+TRIP_DEP_TIME_FIELD = "dep_time"
+
+def save_trips_to_shp_file(filename, trips, trips_srs, output_srs):
+    if os.path.exists(filename):
+        os.unlink(filename)    
+    driver = ogr.GetDriverByName("ESRI Shapefile")
+    trips_shp_file = driver.CreateDataSource(filename)
+    trips_lyr = trips_shp_file.CreateLayer(TRIP_LYR_NAME, output_srs, ogr.wkbLineString)
+    trips_lyr.CreateField(ogr.FieldDefn(TRIP_ID_FIELD, ogr.OFTInteger))
+    field = ogr.FieldDefn(TRIP_ORIGIN_SLA_FIELD, ogr.OFTString)
+    field.SetWidth(254)
+    trips_lyr.CreateField(field)
+    field = ogr.FieldDefn(TRIP_DEST_SLA_FIELD, ogr.OFTString)
+    field.SetWidth(254)
+    trips_lyr.CreateField(field)
+    field = ogr.FieldDefn(TRIP_DEP_TIME_FIELD, ogr.OFTString)
+    field.SetWidth(254)
+    trips_lyr.CreateField(field)
+    transform = osr.CoordinateTransformation(trips_srs, output_srs)
+
+    for trip_cnt, trip in enumerate(trips):
+        trip_feat = ogr.Feature(trips_lyr.GetLayerDefn())
+        trip_geom = ogr.Geometry(ogr.wkbLineString) 
+        trip_geom.AddPoint(*trip[0].GetPoint(0))
+        trip_geom.AddPoint(*trip[1].GetPoint(0))
+        trip_geom.Transform(transform)
+        trip_feat.SetGeometry(trip_geom)
+        trip_feat.SetField(TRIP_ID_FIELD, trip_cnt)
+        trip_feat.SetField(TRIP_ORIGIN_SLA_FIELD, trip[3])
+        trip_feat.SetField(TRIP_DEST_SLA_FIELD, trip[4])
+        trip_feat.SetField(TRIP_DEP_TIME_FIELD, trip[2].strftime("%H:%M"))
+        trips_lyr.CreateFeature(trip_feat)
+        trip_feat.Destroy()
+    trips_shp_file.Destroy()
+    return
+
+SLA_NAME_FIELD = "SLA_NAME06"
+
+def populate_zone_polys_dict_from_layer(sla_lyr):
+    polys_dict = {}
+    for sla_shp in sla_lyr:
+        sla_name = sla_shp.GetField(SLA_NAME_FIELD)       
+        sla_geom = sla_shp.GetGeometryRef()
+        polys_dict[sla_name] = sla_shp
+    return polys_dict
+
 TEST_OD_COUNTS = {
     ("A", "A"): 254,
     ("A", "B"): 2345,
@@ -145,24 +203,48 @@ TEST_ZONE_POLYS_DICT = {
     "C": c_poly,
     }
 
+TEST_OD_COUNTS_SLAS = {
+    ("Melton (S) - East", "Melton (S) - East"): 254,
+    ("Melton (S) - East", "Melbourne (C) - Inner"): 2345,
+    ("Melton (S) - East", "Nillumbik (S) - South-West"): 0,
+    ("Melbourne (C) - Inner", "Melton (S) - East"): 43,
+    ("Melbourne (C) - Inner", "Melbourne (C) - Inner"): 4356,
+    ("Melbourne (C) - Inner", "Nillumbik (S) - South-West"): 500,
+    ("Nillumbik (S) - South-West", "Melton (S) - East"): 233,
+    ("Nillumbik (S) - South-West", "Melbourne (C) - Inner"): 1231,
+    ("Nillumbik (S) - South-West", "Nillumbik (S) - South-West"): 581,
+    }
+
 def main():
-    N_TRIPS = 20
+    N_TRIPS = 100
     RANDOM_TIME_SEED = 5
     RANDOM_ORIGIN_SEED = 5
-    RANDOM_DEST_SEED = 5
-    od_counts = TEST_OD_COUNTS
+    RANDOM_DEST_SEED = 10
+    OUTPUT_EPSG=4326
 
     #MELB_BBOX = ((144.765, -37.9), (145.36, -37.645))
     #origin_loc_gen = BasicRandomLocGenerator(RANDOM_ORIGIN_SEED, MELB_BBOX)
     #dest_loc_gen = BasicRandomLocGenerator(RANDOM_DEST_SEED, MELB_BBOX)
 
-    zone_polys_dict = TEST_ZONE_POLYS_DICT
+    #zone_polys_dict = TEST_ZONE_POLYS_DICT
+    input_sla_fname = "/Users/Shared/GIS-Projects-General/ABS_Data/SLAs_Metro_Melb_Region.shp"
+    sla_fname = os.path.expanduser(input_sla_fname)
+    sla_shp = ogr.Open(sla_fname, 0)
+    if sla_shp is None:
+        print "Error, input SLA shape file given, %s , failed to open." \
+            % (input_sla_fname)
+        sys.exit(1)
+    sla_lyr = sla_shp.GetLayer(0)  
+    zone_polys_dict = populate_zone_polys_dict_from_layer(sla_lyr)
+
     origin_loc_gen = WithinZoneLocGenerator(RANDOM_ORIGIN_SEED,
-        zone_polys_dict)
+        zone_polys_dict, None)
     dest_loc_gen = WithinZoneLocGenerator(RANDOM_DEST_SEED,
-        zone_polys_dict)
+        zone_polys_dict, None)
 
     random_time_gen = RandomTimeGenerator(RANDOM_TIME_SEED)
+
+    od_counts = TEST_OD_COUNTS_SLAS
 
     trip_generator = OD_Based_TripGenerator(random_time_gen, od_counts,
         origin_loc_gen, dest_loc_gen, N_TRIPS)
@@ -177,6 +259,12 @@ def main():
             trip[1].GetX(), trip[1].GetY(), trip[2], trip[3], trip[4])
     print "Generated %d trips." % len(trips)
 
+    trips_srs = sla_lyr.GetSpatialRef()
+    output_srs = osr.SpatialReference()
+    output_srs.ImportFromEPSG(OUTPUT_EPSG)
+    save_trips_to_shp_file("trips.shp", trips, trips_srs, output_srs)
+
+    sla_shp.Destroy()
     return
 
 if __name__ == "__main__":
