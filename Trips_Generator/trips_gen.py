@@ -262,7 +262,7 @@ def main():
     trips_srs = sla_lyr.GetSpatialRef()
     output_srs = osr.SpatialReference()
     output_srs.ImportFromEPSG(OUTPUT_EPSG)
-    save_trips_to_shp_file("trips.shp", trips, trips_srs, output_srs)
+    save_trips_to_shp_file("./output/trips.shp", trips, trips_srs, output_srs)
 
     sla_shp.Destroy()
     return
