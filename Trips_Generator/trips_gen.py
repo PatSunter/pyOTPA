@@ -6,6 +6,7 @@ from osgeo import ogr, osr
 
 import TimeGenerator
 import LocGenerator
+import LocConstraintChecker
 import TripGenerator
 
 TRIP_LYR_NAME = "trips"
@@ -115,6 +116,21 @@ TEST_OD_COUNTS_SLAS = {
     ("Nillumbik (S) - South-West", "Nillumbik (S) - South-West"): 581,
     }
 
+PLANNING_ZONES_SHPFILE = '/Users/Shared/GIS-Projects-General/Vicmap_Data/AURIN/Victorian_Planning_Scheme_Zones-Vicmap_Planning-Melb/78c61513-7aea-4ba2-8ac6-b1578fdf999b.shp'
+
+RESIDENTIAL_ZONES = [\
+    "GRZ1",
+    "NRZ3",
+    "RGZ1",
+    "CCZ1",
+    "CCZ2",
+    ]
+RESIDENTIAL_AND_EMPLOYMENT_ZONES = RESIDENTIAL_ZONES + \
+    [
+    "IN1Z",
+    "IN2Z",
+    ]
+
 def main():
     N_TRIPS = 100
     RANDOM_TIME_SEED = 5
@@ -137,10 +153,21 @@ def main():
     sla_lyr = sla_shp.GetLayer(0)  
     zone_polys_dict = populate_zone_polys_dict_from_layer(sla_lyr)
 
+    # This determines if we're happy for locations to be generated in the same
+    # SRS as the SLAs. If not, we can use something different.
+    loc_srs = sla_lyr.GetSpatialRef()
+
+    origin_constraint_checker = \
+        LocConstraintChecker.PlanningZoneLocConstraintChecker(
+            PLANNING_ZONES_SHPFILE, RESIDENTIAL_ZONES, loc_srs)
+    dest_constraint_checker = \
+        LocConstraintChecker.PlanningZoneLocConstraintChecker(
+            PLANNING_ZONES_SHPFILE, RESIDENTIAL_AND_EMPLOYMENT_ZONES, loc_srs)
+
     origin_loc_gen = LocGenerator.WithinZoneLocGenerator(RANDOM_ORIGIN_SEED,
-        zone_polys_dict, None)
+        zone_polys_dict, origin_constraint_checker)
     dest_loc_gen = LocGenerator.WithinZoneLocGenerator(RANDOM_DEST_SEED,
-        zone_polys_dict, None)
+        zone_polys_dict, dest_constraint_checker)
 
     random_time_gen = TimeGenerator.RandomTimeGenerator(RANDOM_TIME_SEED)
 
@@ -148,6 +175,8 @@ def main():
 
     trip_generator = TripGenerator.OD_Based_TripGenerator(random_time_gen, od_counts,
         origin_loc_gen, dest_loc_gen, N_TRIPS)
+
+    trip_generator.initialise()
 
     trips = []
     trip = trip_generator.gen_next()
@@ -158,6 +187,8 @@ def main():
         print "%f,%f to %f,%f at %s ('%s'->'%s')" % (trip[0].GetX(), trip[0].GetY(), \
             trip[1].GetX(), trip[1].GetY(), trip[2], trip[3], trip[4])
     print "Generated %d trips." % len(trips)
+
+    trip_generator.cleanup()
 
     trips_srs = sla_lyr.GetSpatialRef()
     output_srs = osr.SpatialReference()

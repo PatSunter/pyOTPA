@@ -9,11 +9,17 @@ class OD_Based_TripGenerator:
         self.n_trips = n_trips
         self._od_counts_total = sum(od_counts.itervalues())
         self._ordered_ods = sorted(od_counts.iterkeys())
+        self._origin_loc_generator = origin_loc_generator
+        self._dest_loc_generator = dest_loc_generator
+
+    def initialise(self):    
         self._curr_trip_i = 0
         self._curr_od_i = 0
         self._init_ctrs_for_od(self._curr_od_i)
-        self._origin_loc_generator = origin_loc_generator
-        self._dest_loc_generator = dest_loc_generator
+        self._origin_loc_generator.initialise()
+        self._dest_loc_generator.initialise()
+        self._origin_loc_generator.update_zone(self._curr_od[0])
+        self._dest_loc_generator.update_zone(self._curr_od[1])
 
     def _init_ctrs_for_od(self, od_i):
         self._curr_od = self._ordered_ods[od_i]
@@ -28,13 +34,13 @@ class OD_Based_TripGenerator:
             if self._curr_od_i < (len(self._ordered_ods)-1):
                 self._curr_od_i += 1
                 self._init_ctrs_for_od(self._curr_od_i)
+                self._origin_loc_generator.update_zone(self._curr_od[0])
+                self._dest_loc_generator.update_zone(self._curr_od[1])
             else:
                 return None
 
-        origin_loc = self._origin_loc_generator.gen_loc_within_zone(
-            self._curr_od[0])
-        dest_loc = self._dest_loc_generator.gen_loc_within_zone(
-            self._curr_od[1])
+        origin_loc = self._origin_loc_generator.gen_loc_within_curr_zone()
+        dest_loc = self._dest_loc_generator.gen_loc_within_curr_zone()
         # TODO:- need to link up start times with O-Ds properly later.
         T_START = time(06,00)
         T_END = time(11,00)
@@ -51,4 +57,8 @@ class OD_Based_TripGenerator:
             float(self._od_counts_total)))
         return scaled_trip_cnt
 
+    def cleanup(self):
+        self._origin_loc_generator.cleanup()
+        self._dest_loc_generator.cleanup()
+        return
 
