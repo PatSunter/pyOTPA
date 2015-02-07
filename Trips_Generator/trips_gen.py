@@ -3,6 +3,7 @@
 import os.path
 
 from osgeo import ogr, osr
+from datetime import time
 
 import TimeGenerator
 import LocGenerator
@@ -104,6 +105,7 @@ TEST_ZONE_POLYS_DICT = {
     "C": c_poly,
     }
 
+# Times are: 5AM, 6AM, 7AM, 8AM, 9AM, 10AM, 11AM blocks.
 TEST_OD_COUNTS_SLAS = {
     ("Melton (S) - East", "Melton (S) - East"): 254,
     ("Melton (S) - East", "Melbourne (C) - Inner"): 2345,
@@ -132,7 +134,7 @@ RESIDENTIAL_AND_EMPLOYMENT_ZONES = RESIDENTIAL_ZONES + \
     ]
 
 def main():
-    N_TRIPS = 100
+    N_TRIPS = 20
     RANDOM_TIME_SEED = 5
     RANDOM_ORIGIN_SEED = 5
     RANDOM_DEST_SEED = 10
@@ -169,7 +171,11 @@ def main():
     dest_loc_gen = LocGenerator.WithinZoneLocGenerator(RANDOM_DEST_SEED,
         zone_polys_dict, dest_constraint_checker)
 
-    random_time_gen = TimeGenerator.RandomTimeGenerator(RANDOM_TIME_SEED)
+    # TODO:- need to link up start times with O-Ds properly later.
+    T_START = time(06,00)
+    T_END = time(11,00)
+    random_time_gen = TimeGenerator.RandomTimeGenerator(RANDOM_TIME_SEED,
+        T_START, T_END)
 
     od_counts = TEST_OD_COUNTS_SLAS
 
