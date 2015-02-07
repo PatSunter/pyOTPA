@@ -106,16 +106,25 @@ TEST_ZONE_POLYS_DICT = {
     }
 
 # Times are: 5AM, 6AM, 7AM, 8AM, 9AM, 10AM, 11AM blocks.
-TEST_OD_COUNTS_SLAS = {
-    ("Melton (S) - East", "Melton (S) - East"): 254,
-    ("Melton (S) - East", "Melbourne (C) - Inner"): 2345,
-    ("Melton (S) - East", "Nillumbik (S) - South-West"): 0,
-    ("Melbourne (C) - Inner", "Melton (S) - East"): 43,
-    ("Melbourne (C) - Inner", "Melbourne (C) - Inner"): 4356,
-    ("Melbourne (C) - Inner", "Nillumbik (S) - South-West"): 500,
-    ("Nillumbik (S) - South-West", "Melton (S) - East"): 233,
-    ("Nillumbik (S) - South-West", "Melbourne (C) - Inner"): 1231,
-    ("Nillumbik (S) - South-West", "Nillumbik (S) - South-West"): 581,
+TEST_OD_COUNTS_SLAS_TIMES = {
+    ("Melton (S) - East", "Melton (S) - East"):
+        {"5:00": 30, "6:00": 24, "7:00": 200},
+    ("Melton (S) - East", "Melbourne (C) - Inner"):
+        {"5:00": 584, "6:00": 1023, "7:00": 899},
+    ("Melton (S) - East", "Nillumbik (S) - South-West"):
+        {"5:00": 0, "6:00": 0, "7:00": 0},
+    ("Melbourne (C) - Inner", "Melton (S) - East"):
+        {"5:00": 30, "6:00": 24, "7:00": 68},
+    ("Melbourne (C) - Inner", "Melbourne (C) - Inner"):
+        {"5:00": 987, "6:00": 2345, "7:00": 2999},
+    ("Melbourne (C) - Inner", "Nillumbik (S) - South-West"):
+        {"5:00": 100, "6:00": 204, "7:00": 200},
+    ("Nillumbik (S) - South-West", "Melton (S) - East"):
+        {"5:00": 30, "6:00": 100, "7:00": 109},
+    ("Nillumbik (S) - South-West", "Melbourne (C) - Inner"):
+        {"5:00": 99, "6:00": 654, "7:00": 543},
+    ("Nillumbik (S) - South-West", "Nillumbik (S) - South-West"):
+        {"5:00": 0, "6:00": 234, "7:00": 299},
     }
 
 PLANNING_ZONES_SHPFILE = '/Users/Shared/GIS-Projects-General/Vicmap_Data/AURIN/Victorian_Planning_Scheme_Zones-Vicmap_Planning-Melb/78c61513-7aea-4ba2-8ac6-b1578fdf999b.shp'
@@ -134,7 +143,7 @@ RESIDENTIAL_AND_EMPLOYMENT_ZONES = RESIDENTIAL_ZONES + \
     ]
 
 def main():
-    N_TRIPS = 20
+    N_TRIPS = 100
     RANDOM_TIME_SEED = 5
     RANDOM_ORIGIN_SEED = 5
     RANDOM_DEST_SEED = 10
@@ -171,15 +180,17 @@ def main():
     dest_loc_gen = LocGenerator.WithinZoneLocGenerator(RANDOM_DEST_SEED,
         zone_polys_dict, dest_constraint_checker)
 
-    # TODO:- need to link up start times with O-Ds properly later.
-    T_START = time(06,00)
-    T_END = time(11,00)
-    random_time_gen = TimeGenerator.RandomTimeGenerator(RANDOM_TIME_SEED,
-        T_START, T_END)
+    od_counts = {}
+    for od_pair, dep_time_counts in TEST_OD_COUNTS_SLAS_TIMES.iteritems():
+        od_counts[od_pair] = sum(dep_time_counts.itervalues())
+    #T_START = time(06,00)
+    #T_END = time(11,00)
+    #time_gen = TimeGenerator.RandomTimeGenerator(RANDOM_TIME_SEED,
+    #    T_START, T_END)
+    time_gen = TimeGenerator.ZoneBlockBasedTimeGenerator(RANDOM_TIME_SEED,
+        TEST_OD_COUNTS_SLAS_TIMES)
 
-    od_counts = TEST_OD_COUNTS_SLAS
-
-    trip_generator = TripGenerator.OD_Based_TripGenerator(random_time_gen, od_counts,
+    trip_generator = TripGenerator.OD_Based_TripGenerator(time_gen, od_counts,
         origin_loc_gen, dest_loc_gen, N_TRIPS)
 
     trip_generator.initialise()

@@ -1,12 +1,12 @@
 
 import random
-from datetime import time
+from datetime import time, date, datetime, timedelta
 
 class TimeGenerator:
     def initialise(self):
         return
 
-    def update_zones(self, od_pair):
+    def update_zones(self, od_pair, trip_cnt_to_gen_from_zone):
         return
     
     def gen_time(self):
@@ -25,7 +25,7 @@ def gen_random_time_in_range_minute(randomiser, time_start, time_end):
     gen_time = time(gt_min / 60, gt_min % 60)
     return gen_time
 
-class RandomTimeGenerator:
+class RandomTimeGenerator(TimeGenerator):
     def __init__(self, seed, min_time, max_time):
         self._random_seed = seed
         self._randomiser = None
@@ -35,10 +35,61 @@ class RandomTimeGenerator:
     def initialise(self):
         self._randomiser = random.Random(self._random_seed)
         
-    def update_zones(self, od_pair):
-        return
-
     def gen_time(self):
         gen_time = gen_random_time_in_range_minute(self._randomiser,
             self._min_time, self._max_time)
         return gen_time
+
+class ZoneBlockBasedTimeGenerator(TimeGenerator):
+    def __init__(self, seed, od_counts_by_time):
+        self._random_seed = seed
+        self._randomiser = None
+        self._od_counts_by_time = od_counts_by_time
+
+    def initialise(self):
+        self._randomiser = random.Random(self._random_seed)
+        
+    def update_zones(self, od_pair, trip_cnt_to_gen_from_zone):
+        self._trip_cnt_to_gen_from_curr_zone = trip_cnt_to_gen_from_zone
+        self._curr_zone_trip_cnts = {}
+        time_start_vals = []
+        trip_cnts_in_zone = self._od_counts_by_time[od_pair]
+        total_trip_cnt_in_zone = sum(trip_cnts_in_zone.itervalues())
+        # Make a dict of scaled trips to generate per time-zone.
+        self._curr_od_trip_scaled_trip_cnts = {}
+        for t_str, trip_cnt in self._od_counts_by_time[od_pair].iteritems():
+            t_val = (datetime.strptime(t_str, "%H:%M")).time()
+            time_start_vals.append(t_val)
+            if total_trip_cnt_in_zone:
+                scaled_trip_cnt = int(round(
+                    trip_cnt * trip_cnt_to_gen_from_zone \
+                        / float(total_trip_cnt_in_zone)))
+            else:
+                scaled_trip_cnt = 0
+            self._curr_od_trip_scaled_trip_cnts[t_val] = scaled_trip_cnt
+        self._sorted_curr_od_blocks = sorted(time_start_vals)
+        self._ctr_within_zone = 0
+        self._next_time_block_trip_i_in_zone = 0
+        self._update_time_block(0)
+        return
+
+    def _update_time_block(self, block_i):
+        self._curr_block_i = block_i
+        self._curr_block = self._sorted_curr_od_blocks[block_i]
+        self._curr_block_end = (datetime.combine(date.today(),
+            self._curr_block) + timedelta(hours=1)).time()
+        self._next_time_block_trip_i_in_zone += \
+            self._curr_od_trip_scaled_trip_cnts[self._curr_block]
+        print "Updating gen_times to create %d trips b/w %s and %s" % \
+            (self._curr_od_trip_scaled_trip_cnts[self._curr_block], \
+             self._curr_block, self._curr_block_end)
+
+    def gen_time(self):
+        if self._ctr_within_zone >= self._next_time_block_trip_i_in_zone:
+            self._update_time_block(self._curr_block_i+1)
+        gen_time = gen_random_time_in_range_minute(self._randomiser,
+            self._curr_block, self._curr_block_end)
+        self._ctr_within_zone += 1
+        return gen_time
+
+

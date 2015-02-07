@@ -23,7 +23,8 @@ class OD_Based_TripGenerator:
         self._init_ctrs_for_curr_od()
         self._origin_loc_generator.update_zone(self._curr_od[0])
         self._dest_loc_generator.update_zone(self._curr_od[1])
-        self._time_generator.update_zones(self._curr_od)
+        self._time_generator.update_zones(self._curr_od,
+            self._scaled_trips_in_curr_od)
 
     def _init_ctrs_for_curr_od(self):
         print "Updating to generate trips between ODs '%s' and '%s'" \
@@ -58,5 +59,6 @@ class OD_Based_TripGenerator:
     def cleanup(self):
         self._origin_loc_generator.cleanup()
         self._dest_loc_generator.cleanup()
+        self._time_generator.cleanup()
         return
 
