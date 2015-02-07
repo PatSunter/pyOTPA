@@ -20,7 +20,7 @@ class PlanningZoneLocConstraintChecker:
         self._pz_shp = ogr.Open(pz_fname, 0)
         if self._pz_shp is None:
             print "Error, input Planning Zones shape file given, %s , "\
-                "failed to open." \ % (self.pz_shpfilename)
+                "failed to open." % (self.pz_shpfilename)
             sys.exit(1)
         self._pz_lyr = self._pz_shp.GetLayer(0)  
         pz_srs = self._pz_lyr.GetSpatialRef()
