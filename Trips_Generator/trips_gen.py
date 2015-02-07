@@ -11,10 +11,17 @@ import TripGenerator
 import trips_io
 import sla_io
 import vic_planning_zones_info as pz_info
-import test_data
+import od_reader_VISTA as od_reader
+#import test_data
+
+def get_trip_count_totals_per_od(od_counts_by_dep_time):
+    od_counts = {}
+    for od_pair, dep_time_counts in od_counts_by_dep_time.iteritems():
+        od_counts[od_pair] = sum(dep_time_counts.itervalues())
+    return od_counts
 
 def main():
-    N_TRIPS = 50
+    N_TRIPS = 2000
     RANDOM_TIME_SEED = 5
     RANDOM_ORIGIN_SEED = 5
     RANDOM_DEST_SEED = 10
@@ -27,6 +34,8 @@ def main():
     #zone_polys_dict = TEST_ZONE_POLYS_DICT
     input_sla_fname = "/Users/Shared/GIS-Projects-General/ABS_Data/SLAs_Metro_Melb_Region.shp"
     PLANNING_ZONES_SHPFILE = '/Users/Shared/GIS-Projects-General/Vicmap_Data/AURIN/Victorian_Planning_Scheme_Zones-Vicmap_Planning-Melb/78c61513-7aea-4ba2-8ac6-b1578fdf999b.shp'
+    od_csv_fname = "/Users/pds_phd/Dropbox/PhD-TechnicalProjectWork/OSSTIP_PTUA/WorkPackage_Notes/WPPTUA4-Integrating_upgrades_generate_analysis/ABS-Vista-Data/OD-all-morn.csv"
+    VISTA_SLAS_TO_IGNORE = ['Yarra Ranges (S) - Pt B']
 
     sla_fname = os.path.expanduser(input_sla_fname)
     sla_shp = ogr.Open(sla_fname, 0)
@@ -57,13 +66,13 @@ def main():
     dest_loc_gen = LocGenerator.WithinZoneLocGenerator(RANDOM_DEST_SEED,
         zone_polys_dict, dest_constraint_checker)
 
-    od_counts = {}
-    for od_pair, dep_time_counts in \
-            test_data.TEST_OD_COUNTS_SLAS_TIMES.iteritems():
-        od_counts[od_pair] = sum(dep_time_counts.itervalues())
-    time_gen = TimeGenerator.ZoneBlockBasedTimeGenerator(RANDOM_TIME_SEED,
-        test_data.TEST_OD_COUNTS_SLAS_TIMES)
+    od_counts_by_dep_time, origin_slas, dest_slas = \
+        od_reader.read_od_trip_cnts_by_dep_hour(od_csv_fname,
+            slas_to_ignore = VISTA_SLAS_TO_IGNORE)
+    od_counts = get_trip_count_totals_per_od(od_counts_by_dep_time)
 
+    time_gen = TimeGenerator.ZoneBlockBasedTimeGenerator(RANDOM_TIME_SEED,
+        od_counts_by_dep_time)
     trip_generator = TripGenerator.OD_Based_TripGenerator(time_gen, od_counts,
         origin_loc_gen, dest_loc_gen, N_TRIPS)
 
