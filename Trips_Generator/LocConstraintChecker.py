@@ -9,7 +9,7 @@ class LocConstraintChecker:
     def initialise(self):
         return
 
-    def update_region(self, region_geom):
+    def update_region(self, region_key, region_geom):
         return
     
     def is_valid(self, loc_geom):
@@ -41,7 +41,7 @@ class PlanningZoneLocConstraintChecker(LocConstraintChecker):
         self._tform_to_pz_srs = osr.CoordinateTransformation(
             self._trips_srs, pz_srs)
 
-    def update_region(self, region_geom):
+    def update_region(self, region_key, region_geom):
         self._pz_lyr.SetSpatialFilter(None)
         if self._region_geom_local:
             self._region_geom_local.Destroy()
@@ -79,13 +79,40 @@ class PlanningZoneLocConstraintChecker(LocConstraintChecker):
             self._region_geom_local.Destroy()
             self._region_geom_local = None
 
-class WithinShapeLocConstraintChecker(LocConstraintChecker):
-    def __init__(self, test_shpfilename, trips_srs):
+######################
+
+def create_union_buffered_geom_in_region(test_layer, buffer_dist,
+        region_geom):
+    test_layer.SetSpatialFilter(region_geom)
+    print "Calculating buffered shape in sub-region to search " \
+        "around the %d shapes ..." % (test_layer.GetFeatureCount())
+    buffered_geoms = []
+    for feat in test_layer:
+        isect_geom = feat.GetGeometryRef().Intersection(region_geom)
+        buffer_geom = isect_geom.Buffer(buffer_dist)
+        buffered_geoms.append(buffer_geom)
+    test_layer.SetSpatialFilter(None)
+
+    union_geom = None
+    if len(buffered_geoms) > 0:
+        union_geom = buffered_geoms[0]
+        for bgeom in buffered_geoms[1:]:
+            new_union_geom = union_geom.Union(bgeom)
+            union_geom.Destroy()
+            bgeom.Destroy()
+            union_geom = new_union_geom
+    print "...done."
+    return union_geom
+
+class WithinBufferOfShapeLocConstraintChecker(LocConstraintChecker):
+    def __init__(self, test_shpfilename, buffer_dist, trips_srs):
         self.test_shpfilename = test_shpfilename
+        self._buffer_dist = buffer_dist
         self._tform_to_test_srs = None
         self._trips_srs = trips_srs
         self._test_geom_in_region = None
         self._test_shp = None
+        self._region_buffered_geoms_cache = None
     
     def initialise(self):
         test_fname = os.path.expanduser(self.test_shpfilename)
@@ -99,45 +126,24 @@ class WithinShapeLocConstraintChecker(LocConstraintChecker):
         test_srs = self._test_lyr.GetSpatialRef()
         self._tform_to_test_srs = osr.CoordinateTransformation(
             self._trips_srs, test_srs)
+        self._region_buffered_geoms_cache = {}
 
-    def update_region(self, region_geom):
-        self._test_lyr.SetSpatialFilter(None)
-        if self._test_geom_in_region:
-            self._test_geom_in_region.Destroy()
+    def update_region(self, region_key, region_geom):
+        if region_key in self._region_buffered_geoms_cache.iterkeys():
+            self._test_geom_in_region = \
+                self._region_buffered_geoms_cache[region_key]
+            return
+
         region_geom_local = region_geom.Clone()
         region_geom_local.Transform(self._tform_to_test_srs)
-        # There is just one shape in the layer :- take intersection.
-        #test_shp = self._test_lyr.GetFeature(0)
-        #int_geom = test_shp.GetGeometryRef().Intersection(
-        #    region_geom_local)
-        #region_geom_local.Destroy()
-        #self._test_geom_in_region = int_geom
-
-        # This is in decimal degrees given particular shpfile input.
-        BUFFER_DIST = 0.0015
-        # Spatial filter
-        self._test_lyr.SetSpatialFilter(region_geom_local)
-        print "Calculating buffered shape in sub-region to search " \
-            "around the %d shapes ..." % (self._test_lyr.GetFeatureCount())
-        buffered_geoms = []
-        for feat in self._test_lyr:
-            isect_geom = feat.GetGeometryRef().Intersection(region_geom_local)
-            buffer_geom = isect_geom.Buffer(BUFFER_DIST)
-            buffered_geoms.append(buffer_geom)
-        self._test_lyr.SetSpatialFilter(None)
-
-        if len(buffered_geoms) > 0:
-            self._test_geom_in_region 
-            union_geom = buffered_geoms[0]
-            for bgeom in buffered_geoms[1:]:
-                new_union_geom = union_geom.Union(bgeom)
-                union_geom.Destroy()
-                bgeom.Destroy()
-                union_geom = new_union_geom
-            self._test_geom_in_region = union_geom
+        union_buffer_geom = create_union_buffered_geom_in_region(
+            self._test_lyr, self._buffer_dist, region_geom_local)
+        region_geom_local.Destroy()
+        if union_buffer_geom:
+            self._test_geom_in_region = union_buffer_geom
+            self._region_buffered_geoms_cache[region_key] = union_buffer_geom
         else:
             self._test_geom_in_region = None
-        print "...done."
         return
  
     def is_valid(self, loc_geom):
@@ -158,6 +164,7 @@ class WithinShapeLocConstraintChecker(LocConstraintChecker):
             self._test_shp.Destroy()
         self._test_lyr = None
         self._test_shp = None
-        if self._test_geom_in_region:
-            self._test_geom_in_region.Destroy()
+        if self._region_buffered_geoms_cache:
+            for buffered_geom in self._region_buffered_geoms_cache.itervalues():
+                buffered_geom.Destroy()
             self._test_geom_in_region = None

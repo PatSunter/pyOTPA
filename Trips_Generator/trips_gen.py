@@ -21,7 +21,7 @@ def get_trip_count_totals_per_od(od_counts_by_dep_time):
     return od_counts
 
 def main():
-    N_TRIPS = 5000
+    N_TRIPS = 5
     RANDOM_TIME_SEED = 5
     RANDOM_ORIGIN_SEED = 5
     RANDOM_DEST_SEED = 10
@@ -35,6 +35,8 @@ def main():
     input_sla_fname = "/Users/Shared/GIS-Projects-General/ABS_Data/SLAs_Metro_Melb_Region.shp"
     PLANNING_ZONES_SHPFILE = '/Users/Shared/GIS-Projects-General/Vicmap_Data/AURIN/Victorian_Planning_Scheme_Zones-Vicmap_Planning-Melb/78c61513-7aea-4ba2-8ac6-b1578fdf999b.shp'
     STREETS_LANES_BUFFER_SHPFILE = '/Users/pds_phd/Dropbox/PhD-TechnicalProjectWork/OSSTIP_Common_LargeFile_Archives/OSM/melbourne.osm2pgsql-shapefiles/melbourne.osm-line-streets_subset2.shp'
+    # Value below in decimal degrees based on above, ~= 150m.
+    BUFFER_DIST = 0.0015
     od_csv_fname = "/Users/pds_phd/Dropbox/PhD-TechnicalProjectWork/OSSTIP_PTUA/WorkPackage_Notes/WPPTUA4-Integrating_upgrades_generate_analysis/ABS-Vista-Data/OD-all-morn.csv"
     VISTA_SLAS_TO_IGNORE = ['Yarra Ranges (S) - Pt B']
 
@@ -62,11 +64,11 @@ def main():
             PLANNING_ZONES_SHPFILE, pz_info.RESIDENTIAL_AND_EMPLOYMENT_ZONES,
             loc_srs)
     origin_rd_dist_checker = \
-        LocConstraintChecker.WithinShapeLocConstraintChecker(
-            STREETS_LANES_BUFFER_SHPFILE, loc_srs)
+        LocConstraintChecker.WithinBufferOfShapeLocConstraintChecker(
+            STREETS_LANES_BUFFER_SHPFILE, BUFFER_DIST, loc_srs)
     dest_rd_dist_checker = \
-        LocConstraintChecker.WithinShapeLocConstraintChecker(
-            STREETS_LANES_BUFFER_SHPFILE, loc_srs)
+        LocConstraintChecker.WithinBufferOfShapeLocConstraintChecker(
+            STREETS_LANES_BUFFER_SHPFILE, BUFFER_DIST, loc_srs)
 
     origin_loc_gen = LocGenerator.WithinZoneLocGenerator(RANDOM_ORIGIN_SEED,
         zone_polys_dict, 
