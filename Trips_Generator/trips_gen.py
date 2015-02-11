@@ -79,7 +79,6 @@ def main():
     trip_generator.initialise()
 
     trips = []
-    trip = trip_generator.gen_next()
     for trip_i in range(N_TRIPS):
         trip = trip_generator.gen_next()
         if not trip: break
