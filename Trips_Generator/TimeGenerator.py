@@ -1,5 +1,6 @@
 
 import random
+import operator
 from datetime import time, date, datetime, timedelta
 
 class TimeGenerator:
@@ -57,16 +58,30 @@ class ZoneBlockBasedTimeGenerator(TimeGenerator):
         total_trip_cnt_in_zone = sum(trip_cnts_in_zone.itervalues())
         # Make a dict of scaled trips to generate per time-zone.
         self._curr_od_trip_scaled_trip_cnts = {}
+        # Because of allocating out a fractional count, need to 
+        # do a 2-stage process here.
+        scaled_trip_cnt_floats_map = {}
         for t_str, trip_cnt in self._od_counts_by_time[od_pair].iteritems():
             t_val = (datetime.strptime(t_str, "%H:%M")).time()
             time_start_vals.append(t_val)
             if total_trip_cnt_in_zone:
-                scaled_trip_cnt = int(round(
-                    trip_cnt * trip_cnt_to_gen_from_zone \
-                        / float(total_trip_cnt_in_zone)))
+                scaled_trip_cnt_float = trip_cnt * trip_cnt_to_gen_from_zone \
+                        / float(total_trip_cnt_in_zone)
             else:
-                scaled_trip_cnt = 0
-            self._curr_od_trip_scaled_trip_cnts[t_val] = scaled_trip_cnt
+                scaled_trip_cnt_float = 0
+            scaled_trip_cnt_floats_map[t_val] = scaled_trip_cnt_float
+        
+        trips_allocated = 0
+        for t_val in time_start_vals:
+            self._curr_od_trip_scaled_trip_cnts[t_val] = 0
+        while trips_allocated < trip_cnt_to_gen_from_zone:
+            max_cnt_pair = max(scaled_trip_cnt_floats_map.iteritems(),
+                key=operator.itemgetter(1))
+            self._curr_od_trip_scaled_trip_cnts[max_cnt_pair[0]] += 1
+            scaled_trip_cnt_floats_map[max_cnt_pair[0]] = max_cnt_pair[1] - 1
+            trips_allocated += 1
+        assert sum(self._curr_od_trip_scaled_trip_cnts.itervalues()) \
+            == trip_cnt_to_gen_from_zone
         self._sorted_curr_od_blocks = sorted(time_start_vals)
         self._ctr_within_zone = 0
         self._next_time_block_trip_i_in_zone = 0
@@ -85,7 +100,9 @@ class ZoneBlockBasedTimeGenerator(TimeGenerator):
              self._curr_block, self._curr_block_end)
 
     def gen_time(self):
-        if self._ctr_within_zone >= self._next_time_block_trip_i_in_zone:
+        assert sum(self._curr_od_trip_scaled_trip_cnts.itervalues()) > 0
+        while self._ctr_within_zone >= self._next_time_block_trip_i_in_zone:
+            next_block_i = self._curr_block_i+1
             self._update_time_block(self._curr_block_i+1)
         gen_time = gen_random_time_in_range_minute(self._randomiser,
             self._curr_block, self._curr_block_end)
