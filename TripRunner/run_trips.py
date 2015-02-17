@@ -5,11 +5,13 @@ import urllib2
 import os.path
 import json
 from datetime import datetime, date, time
+from osgeo import osr
 
 import trip_analysis
 
 OTP_DATE_FMT = "%Y-%m-%d"
 OTP_TIME_FMT = "%H:%M:%S"
+OTP_ROUTER_EPSG = 4326
 
 def build_trip_request_url(server_url, routing_params, trip_date, trip_time,
         origin_lon_lat, dest_lon_lat, otp_router_id=None):
@@ -67,13 +69,58 @@ def route_trips_and_save_details(server_url, otp_router_id, save_path,
             print "DONE!\n"
     return
 
-def run_single_trip_multi_graphs_test():    
-    server_url = 'http://130.56.248.56'
+def run_single_trip_multi_graphs_print_stats(server_url, routing_params,
+        graph_specs, trip_req_start_date, trip_req_start_time,
+        origin_lon_lat, dest_lon_lat):    
+    trip_req_start_dt = datetime.combine(trip_req_start_date,
+        trip_req_start_time)
 
-    routing_params = {
-    }
+    print "\nCalling server to route a trip from %s to %s, leaving "\
+        "at %s:" % (origin_lon_lat, dest_lon_lat, trip_req_start_dt)
+
+    for graph_short, graph_full in graph_specs.iteritems():
+        res_str = run_trip(server_url, routing_params,
+            trip_req_start_date, trip_req_start_time, origin_lon_lat,
+            dest_lon_lat, otp_router_id=graph_full)
+        res = json.loads(res_str)
+        #import pprint
+        #pp = pprint.PrettyPrinter(indent=2)
+        #pp.pprint(res)
+        itin = res['plan']['itineraries'][0]
+        print "\nRouting on the %s network/timetable, Requested trip stats:" \
+            % graph_short
+        trip_analysis.print_single_trip_stats(origin_lon_lat, dest_lon_lat,
+            trip_req_start_dt, itin)
+    return
+
+def read_then_route_trip_set(trips_shpfilename, trips_start_date,
+        graph_specs):
+    otp_router_srs = osr.SpatialReference()
+    otp_router_srs.ImportFromEPSG(OTP_ROUTER_EPSG)
+
+    trip_id_map, trips = Trips_Generator.trips_io.read_trips_from_shp_file(
+        trips_shpfilename, otp_router_srs)
+
+    for graph_short, graph_full in graph_specs.iteritems():
+        for trip in trips:
+            trip_req_start_dt = datetime.combine(trip_req_start_date,
+                trip[2])
+            res_str = run_trip(SERVER_URL, ROUTING_PARAMS,
+                trip_req_start_date, trip[2], trip[0],
+                trip[1], otp_router_id=graph_full)
+            res = json.loads(res_str)
+            itin = res['plan']['itineraries'][0]
+            print "\nRouting on the %s network/timetable, " \
+                "Requested trip stats:" \
+                % graph_short
+            trip_analysis.print_single_trip_stats(trip[0], trip[1],
+                trip_req_start_dt, itin) 
+    return
+
+def main():
+    SERVER_URL = 'http://130.56.248.56'
     # See RoutingRequest.java in OTP for comments on each of these.
-    routing_params = {
+    ROUTING_PARAMS = {
         'arriveBy':'false',
         'mode':'TRANSIT,WALK',
         'maxTransfers':4,
@@ -96,40 +143,24 @@ def run_single_trip_multi_graphs_test():
           # above and beyond walkBoardCost and bikeBoardCost?
     }
 
-    trip_req_start_date = date(year=2015,month=2,day=16)
-    trip_req_start_time = time(11,45)
-    trip_req_start_dt = datetime.combine(trip_req_start_date,
-        trip_req_start_time)
-    #origin_lon_lat = (144.876791,-37.749236) 
-    #dest_lon_lat = (145.091024,-37.897849)
-    origin_lon_lat = (144.941184,-37.700166)
-    dest_lon_lat = (145.089924,-37.717540)
-
-    graphs = {
+    GRAPH_SPECS = {
         'PTV':'MelbTrainTramBus-2014_06-metro_bus',
         'BZE':'MelbTrainTramBus-BZE-autostops-withcongestion-WithMotorways-updated-20140724',
         'PTUA':'MelbTrainTramBus-PTUA-add_upgraded_extended_trains_upgraded_extended_auto_600_trams_upgraded_buses-v2-20141115',
         }
 
-    for graph_short, graph_full in graphs.iteritems():
-        res_str = run_trip(server_url, routing_params,
-            trip_req_start_date, trip_req_start_time, origin_lon_lat,
-            dest_lon_lat, otp_router_id=graph_full)
+    trip_req_start_date = date(year=2015,month=2,day=16)
+    trip_req_start_time = time(11,45)
+    origin_lon_lat = (144.941184,-37.700166)
+    dest_lon_lat = (145.089924,-37.717540)
+    #origin_lon_lat = (144.876791,-37.749236) 
+    #dest_lon_lat = (145.091024,-37.897849)
+    run_single_trip_multi_graphs_print_stats(SERVER_URL, ROUTING_PARAMS,
+        GRAPH_SPECS, trip_req_start_date, trip_req_start_time,
+        origin_lon_lat, dest_lon_lat)
 
-        #f = open("trip.txt", 'w')
-        #f.write(data)
-        #f.close()
-        res = json.loads(res_str)
-        #import pprint
-        #pp = pprint.PrettyPrinter(indent=2)
-        #pp.pprint(res)
-        
-        itin = res['plan']['itineraries'][0]
-        print "\nRouting on the %s network/timetable, Requested trip stats:" \
-            % graph_short
-        trip_analysis.print_single_trip_stats(origin_lon_lat, dest_lon_lat,
-            trip_req_start_dt, itin)
+    #read_then_route_trip_set()
     return
 
 if __name__ == "__main__":
-    run_single_trip_multi_graphs_test()
+    main()
