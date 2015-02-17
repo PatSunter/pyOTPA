@@ -5,29 +5,11 @@ import urllib2
 import os.path
 import json
 from datetime import datetime, date, time, timedelta
-from math import radians, cos, sin, asin, sqrt
+
+import geom_utils
 
 OTP_DATE_FMT = "%Y-%m-%d"
 OTP_TIME_FMT = "%H:%M:%S"
-
-# Note:- could possibly also use the shapely length function, or 
-# geopy has a Vincenty Distance implementation
-# see:- http://gis.stackexchange.com/questions/4022/looking-for-a-pythonic-way-to-calculate-the-length-of-a-wkt-linestring
-def haversine(lon1, lat1, lon2, lat2):
-    """
-     Calculate the great circle distance between two points 
-     on the earth (specified in decimal degrees) - return in metres
-    """
-    # convert decimal degrees to radians 
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    # haversine formula 
-    dlon = lon2 - lon1 
-    dlat = lat2 - lat1 
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-    c = 2 * asin(sqrt(a)) 
-    km = 6367 * c
-    metres = km * 1000
-    return metres 
 
 def build_trip_request_url(server_url, routing_params, trip_date, trip_time,
         origin_lon_lat, dest_lon_lat, otp_router_id=None):
@@ -46,6 +28,19 @@ def build_trip_request_url(server_url, routing_params, trip_date, trip_time,
     # Add server URL
     url = server_url + reqStr
     return url
+
+def run_trip(server_url, routing_params, trip_req_start_date,
+        trip_req_start_time, origin_lon_lat, dest_lon_lat, otp_router_id):
+
+    url = build_trip_request_url(server_url, routing_params,
+        trip_req_start_date, 
+        trip_req_start_time, origin_lon_lat, dest_lon_lat,
+        otp_router_id=graph_full)
+    #print url
+
+    response = urllib2.urlopen(url)
+    data = response.read()
+    return data
 
 def route_trips_and_save_details(server_url, otp_router_id, save_path,
         save_suffix, trips, date, routing_params): 
@@ -70,12 +65,6 @@ def route_trips_and_save_details(server_url, otp_router_id, save_path,
 
             print "DONE!\n"
     return
-
-def save_trip_stats(multi_graph_iso_set):
-    for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
-            multi_graph_iso_set:
-        route_trips_and_save_details(server_url, otp_router_id, save_path,
-            save_suffix, **isos_spec)
 
 def get_total_sec(td):
     return td.days * 24 * 3600 + td.seconds + td.microseconds / float(10**6)
@@ -103,7 +92,7 @@ def print_trip_stats(origin_lon_lat, dest_lon_lat, trip_req_start_dt, itin):
     dist_travelled = 0
     for leg in itin['legs']:
         dist_travelled += leg['distance']
-    dist_direct = haversine(origin_lon_lat[0], origin_lon_lat[1],
+    dist_direct = geom_utils.haversine(origin_lon_lat[0], origin_lon_lat[1],
         dest_lon_lat[0], dest_lon_lat[1])
 
     trip_speed_along_route = (dist_travelled / 1000.0) \
@@ -131,7 +120,6 @@ def print_trip_stats(origin_lon_lat, dest_lon_lat, trip_req_start_dt, itin):
 
 if __name__ == "__main__":
     server_url = 'http://130.56.248.56'
-    routing_params = {}
 
     routing_params = {
     }
@@ -160,7 +148,7 @@ if __name__ == "__main__":
     }
 
     trip_req_start_date = date(year=2015,month=2,day=16)
-    trip_req_start_time = time(7,45)
+    trip_req_start_time = time(11,45)
     trip_req_start_dt = datetime.combine(trip_req_start_date,
         trip_req_start_time)
     #origin_lon_lat = (144.876791,-37.749236) 
@@ -175,27 +163,22 @@ if __name__ == "__main__":
         }
 
     for graph_short, graph_full in graphs.iteritems():
-        url = build_trip_request_url(server_url, routing_params,
-            trip_req_start_date, 
-            trip_req_start_time, origin_lon_lat, dest_lon_lat,
-            otp_router_id=graph_full)
-        print url
-
-        response = urllib2.urlopen(url)
-        data = response.read()
+        res_str = run_trip(server_url, routing_params,
+            trip_req_start_date, trip_req_start_time, origin_lon_lat,
+            dest_lon_lat, otp_router_id=graph_full)
 
         #f = open("trip.txt", 'w')
         #f.write(data)
         #f.close()
 
-        jdata = json.loads(data)
+        res = json.loads(res_str)
 
         #import pprint
         #pp = pprint.PrettyPrinter(indent=2)
-        #pp.pprint(jdata)
+        #pp.pprint(res)
         
-        itin = jdata['plan']['itineraries'][0]
+        itin = res['plan']['itineraries'][0]
         
-        print "Routing on the %s network/timetable, Requested trip took:" \
+        print "\nRouting on the %s network/timetable, Requested trip stats:" \
             % graph_short
         print_trip_stats(origin_lon_lat, dest_lon_lat, trip_req_start_dt, itin)
