@@ -6,7 +6,6 @@ import os.path
 import json
 from datetime import datetime, date, time
 
-import geom_utils
 import trip_analysis
 
 OTP_DATE_FMT = "%Y-%m-%d"
