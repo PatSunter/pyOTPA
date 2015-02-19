@@ -187,7 +187,8 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
         means[graph_name]['walk_dist'] = calc_mean_walk_dist(trip_results)
         means[graph_name]['transfers'] = calc_mean_transfers(trip_results)
 
-    print "Mean results were:"
+    print "Mean results for the %d trips were:" \
+        % (max(map(len, trip_results_by_graph.itervalues())))
     for graph_name in graph_names:
         print "'%s': mean trip time %s, direct speed %.2f km/h, "\
             "walk dist %.2fm, # of transfers %.1f" % \
