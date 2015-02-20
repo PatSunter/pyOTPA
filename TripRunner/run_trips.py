@@ -5,15 +5,19 @@ import urllib2
 import os.path
 import json
 import glob
+import sys
 from datetime import datetime, date, time
 from osgeo import osr
 
 import trip_analysis
+import TripItinerary
 import Trips_Generator.trips_io
 
 OTP_DATE_FMT = "%Y-%m-%d"
 OTP_TIME_FMT = "%H:%M:%S"
 OTP_ROUTER_EPSG = 4326
+
+PROGRESS_PRINT_PERCENTAGE = 5
 
 def build_trip_request_url(server_url, routing_params, trip_date, trip_time,
         origin_lon_lat, dest_lon_lat, otp_router_id=None):
@@ -67,7 +71,7 @@ def run_single_trip_multi_graphs_print_stats(server_url, routing_params,
         itin_json = res['plan']['itineraries'][0]
         print "\nRouting on the %s network/timetable, Requested trip stats:" \
             % graph_name
-        ti = trip_analysis.TripItinerary(itin_json)
+        ti = TripItinerary.TripItinerary(itin_json)
         trip_analysis.print_single_trip_stats(origin_lon_lat, dest_lon_lat,
             trip_req_start_dt, ti)
     return
@@ -82,26 +86,46 @@ def route_trip_set_on_graphs(server_url, routing_params,
             trip[2])
 
     for graph_name, graph_full in graph_specs.iteritems():
-        print "\nRouting trips on the %s network/timetable: " \
-            % graph_name
+        print "\nRouting the %d requested trips on the %s network/timetable: " \
+            % (len(trips_by_id), graph_name)
         trip_results = {}
+        trips_routed = 0
+        print_increment = len(trips_by_id) * (PROGRESS_PRINT_PERCENTAGE / 100.0)
+        next_print_total = print_increment
         for trip_id, trip in sorted(trips_by_id.iteritems()):
             trip_req_start_dt = trip_req_start_dts[trip_id]
             res_str = run_trip(server_url, routing_params,
                 trip_req_start_date, trip[2], trip[0],
                 trip[1], otp_router_id=graph_full)
             res = json.loads(res_str)
-            itins = res['plan']['itineraries']
-            if itins:
-                itin_json = res['plan']['itineraries'][0]
-                ti = trip_analysis.TripItinerary(itin_json)
-            else:
+            if not res['plan']:
+                print "Warning:- requested trip ID %d from %s to %s at %s "\
+                    "time on graph %s failed to generate valid itererary. "\
+                    "Error msg returned by OTP router was:\n%s"\
+                    % (trip_id, trip[0], trip[1], trip[2], graph_name,
+                       res['error']['msg'])
                 ti = None
+            else:    
+                try:
+                    itin_json = res['plan']['itineraries'][0]
+                    ti = TripItinerary.TripItinerary(itin_json)
+                except TypeError, IndexError:
+                    print "Unexpected failure to get trip itinerary from "\
+                        "received result."
+                    ti = None
             trip_results[trip_id] = ti    
             #print "\nTrip from %s to %s, leaving "\
             #    "at %s:" % (trip[0], trip[1], trip_req_start_dt)
             #trip_analysis.print_single_trip_stats(trip[0], trip[1],
             #    trip_req_start_dt, ti) 
+            trips_routed += 1
+
+            if trips_routed >= next_print_total:
+                while trips_routed >= next_print_total:
+                    next_print_total += print_increment
+                percent_done = trips_routed / float(len(trips_by_id)) * 100.0
+                print "...got results for %d trips (%.1f%% of total.)" \
+                    % (trips_routed, percent_done)
         trip_results_by_graph[graph_name] = trip_results
     return trip_results_by_graph
     
@@ -123,10 +147,14 @@ def load_trip_itineraries(output_base_dir, graph_names):
     for graph_name in graph_names:
         trip_results = {}
         subdir = os.path.join(output_base_dir, graph_name)
-        for fname in glob.glob("%s%s*.json" % (subdir, os.sep)):
+        trip_result_files = glob.glob("%s%s*.json" % (subdir, os.sep))
+        if len(trip_result_files) == 0:
+            print "Error:- no trip results found in dir %s." % (subdir)
+            sys.exit(1)
+        for fname in trip_result_files:
             fbase = os.path.basename(fname)
             trip_id = int(os.path.splitext(fbase)[0])
-            itin = trip_analysis.read_trip_itin_from_file(fname)
+            itin = TripItinerary.read_trip_itin_from_file(fname)
             trip_results[trip_id] = itin
         trip_results_by_graph[graph_name] = trip_results
     return trip_results_by_graph
@@ -139,7 +167,8 @@ def main():
         'mode':'TRANSIT,WALK',
         'maxTransfers':4,
         #'maxWalkDistance':4000,
-        'maxWalkDistance':1000,
+        #'maxWalkDistance':1000,
+        'maxWalkDistance':200,
         'clampInitialWait':0,
         'walkSpeed':1.38, # Default for OTP, also seems quite close to Google
         # See
@@ -173,9 +202,11 @@ def main():
     #    GRAPH_SPECS, trip_req_start_date, trip_req_start_time,
     #    origin_lon_lat, dest_lon_lat)
 
-    #trips_shpfilename = "/Users/Shared/SoftwareDev/UrbanModelling-GIS/OSSTIP/OTP-Routing-Tools/Trips_Generator/output/trips-with_roads_0015-1000.shp"
     trips_shpfilename = "/Users/Shared/SoftwareDev/UrbanModelling-GIS/OSSTIP/OTP-Routing-Tools/Trips_Generator/output/trips-with_roads_0015-5.shp"
-    trips_set_name = os.path.splitext(os.path.basename(trips_shpfilename))[0]
+    #trips_shpfilename = "/Users/Shared/SoftwareDev/UrbanModelling-GIS/OSSTIP/OTP-Routing-Tools/Trips_Generator/output/trips-bad-5.shp"
+    trips_set_name = "%s-walk_%s" % \
+        (os.path.splitext(os.path.basename(trips_shpfilename))[0],
+         ROUTING_PARAMS['maxWalkDistance'])
     output_base_dir = "./output/%s" % trips_set_name
     otp_router_srs = osr.SpatialReference()
     otp_router_srs.ImportFromEPSG(OTP_ROUTER_EPSG)
@@ -183,9 +214,10 @@ def main():
         trips_shpfilename, otp_router_srs)
 
     trip_results_by_graph = None
-    route = False
-    load = True
-    analyse = True
+
+    route = True
+    load = False
+    analyse = False
     if route:
         trip_results_by_graph = route_trip_set_on_graphs(SERVER_URL,
             ROUTING_PARAMS,
