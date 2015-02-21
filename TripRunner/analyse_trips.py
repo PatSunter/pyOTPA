@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 
 import os.path
-from datetime import date
+from datetime import date, datetime
 from osgeo import osr
 from optparse import OptionParser
 
@@ -16,6 +16,8 @@ def main():
         help='Base dir of trip results to analyse.')
     parser.add_option('--trips_shpfile', dest='trips_shpfile',
         help='Name of shapefile containing specified trips.')
+    parser.add_option('--trips_date', dest='trips_date',
+        help='Departure date of trips. Must be in a format of YYYY-MM-DD.')
     (options, args) = parser.parse_args()
     
     output_base_dir = options.results_base_dir
@@ -31,9 +33,16 @@ def main():
     if not trips_shpfilename:
         parser.print_help()
         parser.error("no provided trips shpfile path.")
-    # TODO: Hard-coding this is bad! Need to store this, and routing params,
-    # more intelligently.
-    trip_req_start_date = date(year=2015,month=2,day=16)
+    if not options.trips_date:
+        parser.print_help()
+        parser.error("No trip departure date provided.")
+    trips_date_str = options.trips_date
+    try:
+        trip_req_start_date = datetime.strptime(trips_date_str, "%Y-%m-%d").date()
+    except ValueError as e:
+        parser.print_help()
+        parser.error("Couldn't parse the trip start date you supplied, "
+            "'%s'. Exception message was: %s" % (trips_date_str, e))
 
     graph_names = None # Means graphs will be inferred from subdirectiries.
 
