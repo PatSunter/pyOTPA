@@ -1,5 +1,6 @@
 
 import os, os.path
+import sys
 from datetime import datetime, time
 from osgeo import ogr, osr
 
@@ -9,6 +10,8 @@ TRIP_ORIGIN_SLA_FIELD = "orig_sla"
 TRIP_DEST_SLA_FIELD = "dest_sla"
 TRIP_DEP_TIME_FIELD = "dep_time"
 TIME_OUTPUT_STR_FORMAT = "%H:%M"
+
+OTP_ROUTER_EPSG = 4326
 
 def save_trips_to_shp_file(filename, trips, trips_srs, output_srs):
     if os.path.exists(filename):
@@ -78,3 +81,12 @@ def read_trips_from_shp_file(filename, output_srs):
     trips_shp.Destroy()
 
     return trip_ids_map, trips
+
+def read_trips_from_shp_file_otp_srs(filename):
+    """Just a utility wrapper around above read_trips function, to ensure they
+    are in the right SRS for OTP."""
+    otp_router_srs = osr.SpatialReference()
+    otp_router_srs.ImportFromEPSG(OTP_ROUTER_EPSG)
+    result = read_trips_from_shp_file(filename, otp_router_srs)
+
+    return result
