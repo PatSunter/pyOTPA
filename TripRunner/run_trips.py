@@ -6,7 +6,6 @@ import json
 from datetime import datetime, date, time
 from osgeo import osr
 
-import otp_config
 import otp_router
 import trip_itins_io
 import Trips_Generator.trips_io
@@ -60,10 +59,9 @@ def main():
          ROUTING_PARAMS['maxWalkDistance'])
     output_base_dir = "./output/%s" % trips_set_name
 
-    otp_router_srs = osr.SpatialReference()
-    otp_router_srs.ImportFromEPSG(otp_config.OTP_ROUTER_EPSG)
-    trips_by_id, trips = Trips_Generator.trips_io.read_trips_from_shp_file(
-        trips_shpfilename, otp_router_srs)
+    trips_by_id, trips = \
+        Trips_Generator.trips_io.read_trips_from_shp_file_otp_srs(
+            trips_shpfilename)
 
     print "\nGoing to request OTP server at %s to route %d trips, defined in "\
         "shpfile %s, with start date %s, and routing params as follows:\n%s" \
