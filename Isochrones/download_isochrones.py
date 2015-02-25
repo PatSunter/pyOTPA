@@ -97,6 +97,9 @@ def saveIsosForLocations(server_url, otp_router_id, save_path,
                 f.close()
 
             # Now get the vectors, at different time radius.
+            # TODO: Remove once iso issue debugged successfully on NECTAR
+            # server.
+            continue
             print "About to save vectors:"
             isochrones = range(iso_inc, iso_max+1, iso_inc)
             for iso in isochrones:
@@ -118,3 +121,34 @@ def save_isos(multi_graph_iso_set):
             multi_graph_iso_set:
         saveIsosForLocations(server_url, otp_router_id, save_path,
             save_suffix, **isos_spec)
+
+def load_locations_from_shpfile(shpfile_name):
+    """Desired output format is a list of tuples containing a location name,
+    and a lon, lat pair, e.g.:
+    ("MONASH UNI CLAYTON", (145.13163, -37.91432))"""
+    locations = []
+
+    output_srs = osr.SpatialReference()
+    output_srs.ImportFromEPSG(OTP_ROUTER_EPSG)
+
+    locations_shp = ogr.Open(shpfile_name, 0)
+    if locations_shp is None:
+        print "Error, input locations shape file given, %s , failed to open." \
+            % (shpfile_name)
+        sys.exit(1)
+    locations_lyr = locations_shp.GetLayer(0)
+
+    locations_srs = locations_lyr.GetSpatialRef()
+    transform = None
+    if not locations_srs.IsSame(output_srs):
+        transform = osr.CoordinateTransformation(locations_srs, output_srs)
+    locations = []
+    for loc_feat in locations_lyr:
+        loc_name = loc_feat.GetField(LOCATION_NAME_FIELD)
+        loc_geom = loc_feat.GetGeometryRef()
+        if transform:
+            loc_geom.Transform(transform)
+        locations.append((loc_name, loc_geom.GetPoint_2D(0)))
+
+    return locations
+

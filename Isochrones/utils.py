@@ -4,8 +4,14 @@ from datetime import datetime, timedelta
 import json
 import time
 
-def rasterName(loc_name, time, base_path=None, suffix=None):
+from osgeo import ogr, osr
+
+OTP_ROUTER_EPSG = 4326
+LOCATION_NAME_FIELD = "Name"
+
+def rasterName(loc_name, date, time, base_path=None, suffix=None):
     fname =  str.replace(loc_name, ' ', '_') \
+        + '-' + str.replace(date, '-', '_') \
         + '-' + str.replace(time, ':', '_')
     if suffix and suffix != "":
         fname += '-' + suffix
@@ -16,8 +22,10 @@ def rasterName(loc_name, time, base_path=None, suffix=None):
         path = fname
     return path
 
-def vectorName(loc_name, time, iso, vec_type, base_path=None, suffix=None):
+def vectorName(loc_name, date, time, iso, vec_type,
+        base_path=None, suffix=None):
     fname = str.replace(loc_name, ' ', '_') \
+        + '-' + str.replace(date, '-', '_') \
         + '-' + str.replace(time, ':', '_') \
         + '-' + str(iso) +"min" \
         + '-' + str.lower(vec_type)
@@ -58,7 +66,8 @@ def get_raster_filenames(loc_name, date_time_str_set, base_path, suffix):
     fname_set = []
     for date_time_tuple in date_time_str_set:
         date_mod, time_mod = date_time_tuple        
-        fname_set.append(rasterName(loc_name, time_mod, base_path, suffix))
+        fname_set.append(rasterName(loc_name, date_mod, time_mod, 
+            base_path, suffix))
     return fname_set
 
 def gen_multi_graph_iso_spec(base_path, server_url, graph_infos,
@@ -117,3 +126,32 @@ def load_iso_set_from_files(fnames):
             ))
     return iso_spec_list    
 
+def load_locations_from_shpfile(shpfile_name):
+    """Desired output format is a list of tuples containing a location name,
+    and a lon, lat pair, e.g.:
+    ("MONASH UNI CLAYTON", (145.13163, -37.91432))"""
+    locations = []
+
+    output_srs = osr.SpatialReference()
+    output_srs.ImportFromEPSG(OTP_ROUTER_EPSG)
+
+    locations_shp = ogr.Open(shpfile_name, 0)
+    if locations_shp is None:
+        print "Error, input locations shape file given, %s , failed to open." \
+            % (shpfile_name)
+        sys.exit(1)
+    locations_lyr = locations_shp.GetLayer(0)
+
+    locations_srs = locations_lyr.GetSpatialRef()
+    transform = None
+    if not locations_srs.IsSame(output_srs):
+        transform = osr.CoordinateTransformation(locations_srs, output_srs)
+    locations = []
+    for loc_feat in locations_lyr:
+        loc_name = loc_feat.GetField(LOCATION_NAME_FIELD)
+        loc_geom = loc_feat.GetGeometryRef()
+        if transform:
+            loc_geom.Transform(transform)
+        locations.append((loc_name, loc_geom.GetPoint_2D(0)))
+
+    return locations
