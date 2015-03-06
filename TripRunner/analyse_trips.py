@@ -2,7 +2,6 @@
 
 import os.path
 from datetime import date, datetime
-from osgeo import osr
 from optparse import OptionParser
 
 import Trips_Generator.trips_io
@@ -18,6 +17,10 @@ def main():
         help='Name of shapefile containing specified trips.')
     parser.add_option('--trips_date', dest='trips_date',
         help='Departure date of trips. Must be in a format of YYYY-MM-DD.')
+    parser.add_option('--create_comparison_shpfile',
+        dest='create_comparison_shpfile', help='a pair of graph names you '\
+            'want to create a comparison shapefile, visualising travel '\
+            'times - separated by a , .')
     (options, args) = parser.parse_args()
     
     output_base_dir = options.results_base_dir
@@ -38,23 +41,41 @@ def main():
         parser.error("No trip departure date provided.")
     trips_date_str = options.trips_date
     try:
-        trip_req_start_date = datetime.strptime(trips_date_str, "%Y-%m-%d").date()
+        trip_req_start_date = \
+            datetime.strptime(trips_date_str, "%Y-%m-%d").date()
     except ValueError as e:
         parser.print_help()
         parser.error("Couldn't parse the trip start date you supplied, "
             "'%s'. Exception message was: %s" % (trips_date_str, e))
+    comp_shp_graphs = None
+    if options.create_comparison_shpfile:
+        comp_shp_graphs = options.create_comparison_shpfile.split(',')[:2]
+        if len(comp_shp_graphs) != 2:
+            parser.print_help()
+            parser.error("Error, the input for create_comparison_shpfile "
+                "must be a comma-separated pair of result directory names.")
 
     graph_names = None # Means graphs will be inferred from subdirectiries.
 
-    otp_router_srs = osr.SpatialReference()
-    otp_router_srs.ImportFromEPSG(otp_config.OTP_ROUTER_EPSG)
-    trips_by_id, trips = Trips_Generator.trips_io.read_trips_from_shp_file(
-        trips_shpfilename, otp_router_srs)
+    trips_by_id, trips = \
+        Trips_Generator.trips_io.read_trips_from_shp_file_otp_srs(
+        trips_shpfilename)
 
-    trip_results_by_graph = trip_itins_io.load_trip_itineraries(output_base_dir,
-        graph_names)
+    trip_results_by_graph = trip_itins_io.load_trip_itineraries(
+        output_base_dir, graph_names)
     trip_analysis.calc_print_mean_results(trip_results_by_graph.keys(),
         trip_results_by_graph, trips_by_id, trip_req_start_date)
+
+    if comp_shp_graphs:
+        graph_name_1, graph_name_2 = comp_shp_graphs
+        comp_shpfilename = os.path.join(output_base_dir, 
+            "%s-vs-%s.shp" % (graph_name_1, graph_name_2))
+        trip_analysis.createTripsCompShapefile(trips_by_id, 
+            (graph_name_1, graph_name_2),
+            trip_req_start_date,
+            trip_results_by_graph[graph_name_1], 
+            trip_results_by_graph[graph_name_2],
+            comp_shpfilename)
     return
 
 if __name__ == "__main__":
