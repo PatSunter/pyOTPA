@@ -21,7 +21,7 @@ def get_trip_count_totals_per_od(od_counts_by_dep_time):
     return od_counts
 
 def main():
-    N_TRIPS = 5
+    N_TRIPS = 100
     RANDOM_TIME_SEED = 5
     RANDOM_ORIGIN_SEED = 5
     RANDOM_DEST_SEED = 10
