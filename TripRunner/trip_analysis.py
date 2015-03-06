@@ -1,3 +1,4 @@
+import os, os.path
 from datetime import datetime, timedelta
 import itertools
 import json
@@ -119,3 +120,91 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
               means[graph_name]['walk_dist'],
               means[graph_name]['transfers'])
     return
+
+def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_date,
+        trip_results_1, trip_results_2, shapefilename):
+    """Creates a Shape file stating the difference between times in two
+    sets of results for the same set of trips.
+    Saves results to a shapefile determined by shapefilename.
+    
+    N.B. :- thanks for overall strategy here are due to author of
+    https://github.com/glennon/FlowpyGIS"""
+
+    import osgeo.ogr
+    from osgeo import ogr
+
+    print "Creating shapefile of trip lines with time attributes to file"\
+        " %s ..." % (shapefilename)
+
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    # create a new data source and layer
+    if os.path.exists(shapefilename):
+        driver.DeleteDataSource(shapefilename)
+    ds = driver.CreateDataSource(shapefilename)
+    if ds is None:
+        print 'Could not create file'
+        sys.exit(1)
+
+    c1TimeFieldName = 't%s' % graph_names[0]
+    c2TimeFieldName = 't%s' % graph_names[1]
+    #Abbreviate due to Shpfile limits.
+    c1TimeFieldName = c1TimeFieldName[:8]
+    c2TimeFieldName = c2TimeFieldName[:8]
+
+    layer = ds.CreateLayer('trip_comps', geom_type=ogr.wkbLineString)
+    fieldDefn = ogr.FieldDefn('TripID', ogr.OFTInteger)
+    layer.CreateField(fieldDefn)
+    fieldDefn = ogr.FieldDefn('DepTime', ogr.OFTString)
+    fieldDefn.SetWidth(8)
+    layer.CreateField(fieldDefn)
+    fieldDefn = ogr.FieldDefn('OriginZ', ogr.OFTString)
+    fieldDefn.SetWidth(254)
+    layer.CreateField(fieldDefn)
+    fieldDefn = ogr.FieldDefn('DestZ', ogr.OFTString)
+    fieldDefn.SetWidth(254)
+    layer.CreateField(fieldDefn)
+    fieldDefn = ogr.FieldDefn(c1TimeFieldName, ogr.OFTInteger)
+    layer.CreateField(fieldDefn)
+    fieldDefn = ogr.FieldDefn(c2TimeFieldName, ogr.OFTInteger)
+    layer.CreateField(fieldDefn)
+    fieldDefn = ogr.FieldDefn('Diff', ogr.OFTInteger)
+    layer.CreateField(fieldDefn)
+    # END setup creation of shapefile
+
+    for trip_id in sorted(trips_by_id.iterkeys()):
+        trip = trips_by_id[trip_id]
+        trip_req_start_dt = datetime.combine(trip_req_start_date, 
+            trip[2])
+        try:
+            trip_res_1 = trip_results_1[trip_id]
+            trip_res_2 = trip_results_2[trip_id]
+        except KeyError:
+            # For now - just skip trips not valid in both graphs.
+            continue
+        case1time = trip_res_1.get_total_trip_sec(trip_req_start_dt)
+        case2time = trip_res_2.get_total_trip_sec(trip_req_start_dt)
+        linester = ogr.Geometry(ogr.wkbLineString)
+        linester.AddPoint(*trip[0])
+        linester.AddPoint(*trip[1])
+
+        featureDefn = layer.GetLayerDefn()
+        feature = ogr.Feature(featureDefn)
+        feature.SetGeometry(linester)
+        feature.SetField('TripId', trip_id)
+        feature.SetField('DepTime', trip[2].strftime('%H:%M:%S'))
+        feature.SetField('OriginZ', trip[3])
+        feature.SetField('DestZ', trip[4])
+        feature.SetField(c1TimeFieldName, case1time)
+        feature.SetField(c2TimeFieldName, case2time)
+        diff = case1time - case2time
+        feature.SetField('Diff', diff)
+        layer.CreateFeature(feature)
+
+    # shapefile cleanup
+    # destroy the geometry and feature and close the data source
+    linester.Destroy()
+    feature.Destroy()
+    ds.Destroy()
+    print "Done."
+    return
+
