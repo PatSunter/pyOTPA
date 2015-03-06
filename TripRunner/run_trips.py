@@ -4,7 +4,6 @@ import sys
 import os.path
 import json
 from datetime import datetime, date, time
-from osgeo import osr
 
 import otp_router
 import trip_itins_io
