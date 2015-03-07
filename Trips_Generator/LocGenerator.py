@@ -31,21 +31,32 @@ class WithinZoneLocGenerator:
         self._random_seed = seed
         self._zone_polys_dict = zone_polys_dict
         self.constraint_checkers = constraint_checkers
+        self._curr_zone = None
 
     def initialise(self):
+        self._curr_zone = None
         self._randomiser = random.Random(self._random_seed)
         if self.constraint_checkers:
             for cc in self.constraint_checkers:
                 cc.initialise()
     
     def update_zone(self, zone_name):
+        if self._curr_zone == zone_name:
+            # Nothing to do.
+            return
         self._curr_zone = zone_name
-        zone_shp = self._zone_polys_dict[zone_name]
+        try:
+            zone_shp = self._zone_polys_dict[zone_name]
+        except KeyError:
+            msg = "Error: couldn't find zone %s in list of %d known zones."\
+                % (zone_name, len(self._zone_polys_dict))
+            raise ValueError(msg)
         self._curr_zone_poly = zone_shp.GetGeometryRef()
         self._curr_zone_env = self._curr_zone_poly.GetEnvelope()
         if self.constraint_checkers:
             for cc in self.constraint_checkers:
                 cc.update_region(zone_name, self._curr_zone_poly)
+        return
         
     def gen_loc_within_zone(self, zone_name):
         self.update_zone(zone_name)
