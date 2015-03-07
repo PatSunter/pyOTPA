@@ -174,6 +174,10 @@ class VISTA_DB_TripGenerator(TripGenerator):
         trip_valid = False
         while not trip_valid:
             trip_row = self._trips_cursor.fetchone()
+            if trip_row == None:
+                print "Warning:- Ran out of trips in your VISTA DB "\
+                    "that satisfy constraints."
+                return None
             trip_id = trip_row[0]
             pers_id = trip_row[1]
             trip_start_time_min = int(trip_row[2])
