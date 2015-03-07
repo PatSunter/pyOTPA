@@ -117,6 +117,8 @@ def route_trip_set_on_graphs(server_url, routing_params,
                 trip_dt = datetime.combine(trip_req_start_date, trip[2])
                 trips_to_route[trip_id] = (trip[0], trip[1], trip_dt, \
                     trip[3], trip[4])
+            else:
+                trips_to_route[trip_id] = trip
 
     for graph_name, graph_full in graph_specs.iteritems():
         output_subdir = os.path.join(output_base_dir, graph_name)
