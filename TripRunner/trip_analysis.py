@@ -94,8 +94,11 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
         trips_by_id, trip_req_start_date):
     trip_req_start_dts = {}
     for trip_id, trip in trips_by_id.iteritems():
-        trip_req_start_dts[trip_id] = datetime.combine(trip_req_start_date,
-            trip[2])
+        if isinstance(trip[2], datetime):
+            trip_req_start_dts[trip_id] = trip[2]
+        else:
+            trip_req_start_dts[trip_id] = datetime.combine(trip_req_start_date,
+                trip[2])
 
     means = {}
     for graph_name in graph_names:
@@ -152,7 +155,8 @@ def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_date,
     c2TimeFieldName = c2TimeFieldName[:8]
 
     layer = ds.CreateLayer('trip_comps', geom_type=ogr.wkbLineString)
-    fieldDefn = ogr.FieldDefn('TripID', ogr.OFTInteger)
+    fieldDefn = ogr.FieldDefn('TripID', ogr.OFTString)
+    fieldDefn.SetWidth(20)
     layer.CreateField(fieldDefn)
     fieldDefn = ogr.FieldDefn('DepTime', ogr.OFTString)
     fieldDefn.SetWidth(8)
@@ -173,8 +177,11 @@ def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_date,
 
     for trip_id in sorted(trips_by_id.iterkeys()):
         trip = trips_by_id[trip_id]
-        trip_req_start_dt = datetime.combine(trip_req_start_date, 
-            trip[2])
+        if isinstance(trip[2], datetime):
+            trip_req_start_dt = trip[2]
+        else:
+            trip_req_start_dt = datetime.combine(trip_req_start_date, 
+                trip[2])
         try:
             trip_res_1 = trip_results_1[trip_id]
             trip_res_2 = trip_results_2[trip_id]
@@ -190,7 +197,7 @@ def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_date,
         featureDefn = layer.GetLayerDefn()
         feature = ogr.Feature(featureDefn)
         feature.SetGeometry(linester)
-        feature.SetField('TripId', trip_id)
+        feature.SetField('TripId', str(trip_id))
         feature.SetField('DepTime', trip[2].strftime('%H:%M:%S'))
         feature.SetField('OriginZ', trip[3])
         feature.SetField('DestZ', trip[4])

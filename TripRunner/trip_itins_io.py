@@ -43,7 +43,7 @@ def load_trip_itineraries(output_base_dir, graph_names=None):
             sys.exit(1)
         for fname in trip_result_files:
             fbase = os.path.basename(fname)
-            trip_id = int(os.path.splitext(fbase)[0])
+            trip_id = os.path.splitext(fbase)[0]
             itin = TripItinerary.read_trip_itin_from_file(fname)
             trip_results[trip_id] = itin
         trip_results_by_graph[graph_name] = trip_results
