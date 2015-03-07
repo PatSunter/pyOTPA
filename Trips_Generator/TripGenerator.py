@@ -1,4 +1,7 @@
 import operator
+from datetime import date, time, datetime
+
+import abs_zone_io
 
 class TripGenerator:
     def initialise(self):    
@@ -110,4 +113,125 @@ class OD_Based_TripGenerator(TripGenerator):
         self._dest_loc_generator.cleanup()
         self._time_generator.cleanup()
         return
+
+##------------------------------------
+
+VISTA_TRIPS_TABLE = 'vista_t'
+VISTA_PEOPLE_TABLE = 'vista_p'
+VISTA_DOW_LOOKUP_TABLE = 'tbl_day'
+VISTA_MODE_LOOKUP_TABLE = 'tbl_mainmode'
+V_TRIP_ID_FIELD = 'TRIPID'
+V_PERSON_ID_FIELD = 'PERSID'
+
+def create_vista_day_code_name_map(connection):
+    day_code_name_map = {}
+    sql = "select Code, Name from %s"\
+            % (VISTA_DOW_LOOKUP_TABLE)
+    cursor = connection.cursor()
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    for row in rows:
+        day_code_name_map[int(row[0])] = row[1]
+    return day_code_name_map
+
+class VISTA_DB_TripGenerator(TripGenerator):
+    def __init__(self, connection,
+            origin_loc_gen, dest_loc_gen, n_trips,
+            trips_date_week_start,
+            ccd_feats_dict,
+            skipped_modes = None,
+            allowed_origin_slas = None,
+            allowed_dest_slas = None):
+        self._connection = connection
+        self._origin_loc_generator = origin_loc_gen
+        self._dest_loc_generator = dest_loc_gen
+        self.n_trips = n_trips
+        self._trips_date_week_start = trips_date_week_start
+        self._ccd_feats_dict = ccd_feats_dict
+        self.skipped_modes = skipped_modes
+        self.allowed_origin_slas = allowed_origin_slas
+        self.allowed_dest_slas = allowed_dest_slas
+        self._trips_cursor = None
+        return
+
+    def initialise(self): 
+        self._origin_loc_generator.initialise()
+        self._dest_loc_generator.initialise()
+        self._curr_trip_i = 0
+        # Initialise DOW table
+        self._day_code_name_map = create_vista_day_code_name_map(
+            self._connection)
+        self._trips_cursor = self._connection.cursor()
+        # The "order by " clause is to save re-calculating any necessary
+        # buffers etc where possible.
+        sql = "select TRIPID, PERSID, STARTIME, ORIGCCD, DESTCCD from %s "\
+                "order by ORIGCCD, DESTCCD"\
+                % (VISTA_TRIPS_TABLE)
+        self._trips_cursor.execute(sql)
+        return
+
+    def gen_next(self):
+        trip_valid = False
+        while not trip_valid:
+            trip_row = self._trips_cursor.fetchone()
+            trip_id = trip_row[0]
+            pers_id = trip_row[1]
+            trip_start_time_min = int(trip_row[2])
+            origin_ccd = str(int(trip_row[3]))
+            dest_ccd = str(int(trip_row[4]))
+            origin_sla = abs_zone_io.get_sla_name_ccd_within(
+                self._ccd_feats_dict, origin_ccd)
+            dest_sla = abs_zone_io.get_sla_name_ccd_within(
+                self._ccd_feats_dict, dest_ccd)
+            # Now check the trip is 'valid' according to any constraint
+            # criteria to apply.
+            trip_valid = True
+            if self.allowed_origin_slas \
+                    and origin_sla not in self.allowed_origin_slas:
+                trip_valid = False
+            if self.allowed_dest_slas \
+                    and dest_sla not in self.allowed_origin_slas:
+                trip_valid = False
+
+        sql = "select TRAVDOW from %s where %s = '%s'" \
+            % (VISTA_PEOPLE_TABLE, V_PERSON_ID_FIELD, pers_id)
+        # Use a separate cursor for person lookup stuff.
+        cursor = self._connection.cursor()
+        cursor.execute(sql)
+        pers_row = cursor.fetchone()
+        trip_dow_code = int(pers_row[0])
+        trip_start_dt = self.gen_trip_datetime(trip_dow_code,
+            trip_start_time_min)
+        self._origin_loc_generator.update_zone(origin_ccd)
+        self._dest_loc_generator.update_zone(dest_ccd)
+        origin_loc = self._origin_loc_generator.gen_loc_within_curr_zone()
+        dest_loc = self._dest_loc_generator.gen_loc_within_curr_zone()
+        trip = (origin_loc, dest_loc, trip_start_dt, \
+            origin_sla, dest_sla, trip_id)
+        self._curr_trip_i += 1
+
+        return trip
+
+    def cleanup(self):
+        self._origin_loc_generator.cleanup()
+        self._dest_loc_generator.cleanup()
+        return
+
+    def gen_trip_datetime(self, trip_dow_code, trip_start_time_min):
+        days_to_add = trip_dow_code-1
+        if trip_start_time_min > 28 * 60:
+            raise ValueError("Trip start time in min is > 4AM the "\
+                "following day: unexpected for VISTA trips.")
+        if trip_start_time_min > 24 * 60:
+            # the start time is the next morning.
+            trip_start_time_min -= 24 * 60
+            days_to_add += 1
+        # Add the # of days in day_code to start date.
+        wk_start = self._trips_date_week_start
+        trip_date = date(wk_start.year, wk_start.month, 
+            wk_start.day + days_to_add)
+        trip_time = time(hour=trip_start_time_min/60, 
+            minute=trip_start_time_min%60)
+        trip_dt = datetime.combine(trip_date, trip_time)
+        return trip_dt
 
