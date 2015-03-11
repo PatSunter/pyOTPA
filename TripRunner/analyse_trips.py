@@ -36,17 +36,19 @@ def main():
     if not trips_shpfilename:
         parser.print_help()
         parser.error("no provided trips shpfile path.")
-    if not options.trips_date:
-        parser.print_help()
-        parser.error("No trip departure date provided.")
-    trips_date_str = options.trips_date
-    try:
-        trip_req_start_date = \
-            datetime.strptime(trips_date_str, "%Y-%m-%d").date()
-    except ValueError as e:
-        parser.print_help()
-        parser.error("Couldn't parse the trip start date you supplied, "
-            "'%s'. Exception message was: %s" % (trips_date_str, e))
+    #if not options.trips_date:
+    #    parser.print_help()
+    #    parser.error("No trip departure date provided.")
+    trip_req_start_date = None
+    if options.trips_date:
+        trips_date_str = options.trips_date
+        try:
+            trip_req_start_date = \
+                datetime.strptime(trips_date_str, "%Y-%m-%d").date()
+        except ValueError as e:
+            parser.print_help()
+            parser.error("Couldn't parse the trip start date you supplied, "
+                "'%s'. Exception message was: %s" % (trips_date_str, e))
     comp_shp_graphs = None
     if options.create_comparison_shpfile:
         comp_shp_graphs = options.create_comparison_shpfile.split(',')[:2]
