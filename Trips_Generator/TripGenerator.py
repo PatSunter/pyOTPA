@@ -1,3 +1,4 @@
+import sys
 import operator
 from datetime import date, time, datetime
 
@@ -130,9 +131,25 @@ def create_vista_day_code_name_map(connection):
     cursor = connection.cursor()
     cursor.execute(sql)
     rows = cursor.fetchall()
+    cursor.close()
     for row in rows:
         day_code_name_map[int(row[0])] = row[1]
     return day_code_name_map
+
+def get_vista_mode_codes(connection, mode_names):
+    mode_codes = []
+    sql = "select code, name from %s"\
+            % (VISTA_MODE_LOOKUP_TABLE)
+    cursor = connection.cursor()
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    cursor.close()
+    mode_name_dict = {}
+    for row in rows:
+        mode_name_dict[row[1]] = int(row[0])
+    for m_name in mode_names:
+        mode_codes.append(mode_name_dict[m_name])
+    return mode_codes
 
 class VISTA_DB_TripGenerator(TripGenerator):
     def __init__(self, connection,
@@ -141,7 +158,8 @@ class VISTA_DB_TripGenerator(TripGenerator):
             ccd_feats_dict,
             skipped_modes = None,
             allowed_origin_slas = None,
-            allowed_dest_slas = None):
+            allowed_dest_slas = None,
+            trip_min_dist_km = None):
         self._connection = connection
         self._origin_loc_generator = origin_loc_gen
         self._dest_loc_generator = dest_loc_gen
@@ -151,7 +169,9 @@ class VISTA_DB_TripGenerator(TripGenerator):
         self.skipped_modes = skipped_modes
         self.allowed_origin_slas = allowed_origin_slas
         self.allowed_dest_slas = allowed_dest_slas
+        self.trip_min_dist_km = trip_min_dist_km
         self._trips_cursor = None
+        self._skipped_mode_codes = None
         return
 
     def initialise(self): 
@@ -161,12 +181,16 @@ class VISTA_DB_TripGenerator(TripGenerator):
         # Initialise DOW table
         self._day_code_name_map = create_vista_day_code_name_map(
             self._connection)
+        self._skipped_mode_codes = get_vista_mode_codes(self._connection,
+            self.skipped_modes)
         self._trips_cursor = self._connection.cursor()
         # The "order by " clause is to save re-calculating any necessary
         # buffers etc where possible.
-        sql = "select TRIPID, PERSID, STARTIME, ORIGCCD, DESTCCD from %s "\
+        sql = "select TRIPID, PERSID, STARTIME, ORIGCCD, DESTCCD, DISTMODE, "\
+                "CUMDIST from %s "\
                 "order by ORIGCCD, DESTCCD"\
                 % (VISTA_TRIPS_TABLE)
+                #"where TRIPID = 'Y07H063109P01T03' "\
         self._trips_cursor.execute(sql)
         return
 
@@ -183,6 +207,8 @@ class VISTA_DB_TripGenerator(TripGenerator):
             trip_start_time_min = int(trip_row[2])
             origin_ccd = str(int(trip_row[3]))
             dest_ccd = str(int(trip_row[4]))
+            dist_mode = int(trip_row[5])
+            trip_dist_km = trip_row[6]
             origin_sla = abs_zone_io.get_sla_name_ccd_within(
                 self._ccd_feats_dict, origin_ccd)
             dest_sla = abs_zone_io.get_sla_name_ccd_within(
@@ -194,7 +220,13 @@ class VISTA_DB_TripGenerator(TripGenerator):
                     and origin_sla not in self.allowed_origin_slas:
                 trip_valid = False
             if self.allowed_dest_slas \
-                    and dest_sla not in self.allowed_origin_slas:
+                    and dest_sla not in self.allowed_dest_slas:
+                trip_valid = False
+            if self._skipped_mode_codes \
+                    and dist_mode in self._skipped_mode_codes:
+                trip_valid = False
+            if self.trip_min_dist_km \
+                    and trip_dist_km < self.trip_min_dist_km:
                 trip_valid = False
 
         sql = "select TRAVDOW from %s where %s = '%s'" \
@@ -203,9 +235,15 @@ class VISTA_DB_TripGenerator(TripGenerator):
         cursor = self._connection.cursor()
         cursor.execute(sql)
         pers_row = cursor.fetchone()
+        cursor.close()
         trip_dow_code = int(pers_row[0])
-        trip_start_dt = self.gen_trip_datetime(trip_dow_code,
-            trip_start_time_min)
+        try:
+            trip_start_dt = self.gen_trip_datetime(trip_dow_code,
+                trip_start_time_min)
+        except ValueError as e:
+            print "Error while trying to create the start time for VISTA "\
+                "trip with ID %s:- %s" % (trip_id, e)
+            sys.exit(1)    
         self._origin_loc_generator.update_zone(origin_ccd)
         self._dest_loc_generator.update_zone(dest_ccd)
         origin_loc = self._origin_loc_generator.gen_loc_within_curr_zone()
@@ -217,6 +255,8 @@ class VISTA_DB_TripGenerator(TripGenerator):
         return trip
 
     def cleanup(self):
+        if self._trips_cursor:
+            self._trips_cursor.close()
         self._origin_loc_generator.cleanup()
         self._dest_loc_generator.cleanup()
         return
@@ -226,7 +266,7 @@ class VISTA_DB_TripGenerator(TripGenerator):
         if trip_start_time_min > 28 * 60:
             raise ValueError("Trip start time in min is > 4AM the "\
                 "following day: unexpected for VISTA trips.")
-        if trip_start_time_min > 24 * 60:
+        if trip_start_time_min >= 24 * 60:
             # the start time is the next morning.
             trip_start_time_min -= 24 * 60
             days_to_add += 1
@@ -234,8 +274,13 @@ class VISTA_DB_TripGenerator(TripGenerator):
         wk_start = self._trips_date_week_start
         trip_date = date(wk_start.year, wk_start.month, 
             wk_start.day + days_to_add)
-        trip_time = time(hour=trip_start_time_min/60, 
-            minute=trip_start_time_min%60)
+        trip_start_clk_hr = trip_start_time_min / 60 
+        if trip_start_clk_hr >= 24:
+            raise ValueError("Input trip time minute %d couldn't be "\
+                "converted to a clock hour." % trip_start_time_min)
+        trip_start_clk_min = trip_start_time_min % 60
+        trip_time = time(hour=trip_start_clk_hr, 
+            minute=trip_start_clk_min)
         trip_dt = datetime.combine(trip_date, trip_time)
         return trip_dt
 
