@@ -11,7 +11,7 @@ import otp_config
 import TripItinerary
 import trip_analysis
 
-PROGRESS_PRINT_PERCENTAGE = 5
+PROGRESS_PRINT_PERCENTAGE = 1
 
 def build_trip_spec_url_section(routing_params, trip_date,
         trip_time, origin_lon_lat, dest_lon_lat):
@@ -116,7 +116,7 @@ def route_trip_set_on_graphs(server_url, routing_params,
             if not isinstance(trip[2], datetime):
                 trip_dt = datetime.combine(trip_req_start_date, trip[2])
                 trips_to_route[trip_id] = (trip[0], trip[1], trip_dt, \
-                    trip[3], trip[4])
+                    trip[3], trip[4], trip[5])
             else:
                 trips_to_route[trip_id] = trip
 
@@ -133,47 +133,58 @@ def route_trip_set_on_graphs(server_url, routing_params,
         trips_processed = 0
         print_increment = len(trips_to_route) * (PROGRESS_PRINT_PERCENTAGE / 100.0)
         next_print_total = print_increment
-        for trip_id, trip in sorted(trips_to_route.iteritems()):
+        sorted_trips_to_route = sorted(trips_to_route.iteritems())
+        for trip_ii, trip_tuple in enumerate(sorted_trips_to_route):
+            trip_id, trip = trip_tuple
             output_fname = os.path.join(output_subdir, "%s.json" % trip_id)
+            output_fname_next = None
+            if trip_ii < len(sorted_trips_to_route) - 1:
+                next_id = sorted_trips_to_route[trip_ii+1][0]
+                output_fname_next = os.path.join(output_subdir,
+                    "%s.json" % next_id)
             if resume_existing and os.path.exists(output_fname):
                 trips_processed += 1
-                continue
-            trip_req_start_dt = trip[2]
-            trip_req_start_date = trip_req_start_dt.date()
-            trip_req_start_time = trip_req_start_dt.time()
-            res_str = route_trip(server_url, routing_params,
-                trip_req_start_date, trip_req_start_time, trip[0],
-                trip[1], otp_router_id=graph_full)
-            res = json.loads(res_str)
-            if not res['plan']:
-                print "Warning:- requested trip ID %d from %s to %s at %s "\
-                    "time on graph %s failed to generate valid itererary. "\
-                    "Error msg returned by OTP router was:\n%s"\
-                    % (trip_id, trip[0], trip[1], trip[2], graph_name,
-                       res['error']['msg'])
-                ti = None
-            else:    
-                try:
-                    itin_json = res['plan']['itineraries'][0]
-                    ti = TripItinerary.TripItinerary(itin_json)
-                except TypeError, IndexError:
-                    print "Unexpected failure to get trip itinerary from "\
-                        "received result."
+            elif resume_existing and output_fname_next \
+                    and os.path.exists(output_fname_next):
+                trips_processed += 1    
+            else:
+                trip_req_start_dt = trip[2]
+                trip_req_start_date = trip_req_start_dt.date()
+                trip_req_start_time = trip_req_start_dt.time()
+                res_str = route_trip(server_url, routing_params,
+                    trip_req_start_date, trip_req_start_time, trip[0],
+                    trip[1], otp_router_id=graph_full)
+                res = json.loads(res_str)
+                if not res['plan']:
+                    print "\tWarning:- requested trip ID %s from %s to %s at %s "\
+                        "time on graph %s failed to generate valid itererary. "\
+                        "Error msg returned by OTP router was:\n\t\t%s"\
+                        % (str(trip_id), trip[0], trip[1], trip[2], graph_name,
+                           res['error']['msg'])
                     ti = None
-            trip_results[trip_id] = ti    
-            if ti and save_incrementally:
-                ti.save_to_file(output_fname)
-            #print "\nTrip from %s to %s, leaving "\
-            #    "at %s:" % (trip[0], trip[1], trip_req_start_dt)
-            #trip_analysis.print_single_trip_stats(trip[0], trip[1],
-            #    trip_req_start_dt, ti) 
-            trips_routed += 1
-            trips_processed += 1
+                else:    
+                    try:
+                        itin_json = res['plan']['itineraries'][0]
+                        ti = TripItinerary.TripItinerary(itin_json)
+                    except TypeError, IndexError:
+                        print "Unexpected failure to get trip itinerary from "\
+                            "received result."
+                        ti = None
+                trip_results[trip_id] = ti    
+                if ti and save_incrementally:
+                    ti.save_to_file(output_fname)
+                #print "\nTrip from %s to %s, leaving "\
+                #    "at %s:" % (trip[0], trip[1], trip_req_start_dt)
+                #trip_analysis.print_single_trip_stats(trip[0], trip[1],
+                #    trip_req_start_dt, ti) 
+                trips_routed += 1
+                trips_processed += 1
 
             if trips_processed >= next_print_total:
                 while trips_processed >= next_print_total:
                     next_print_total += print_increment
-                percent_done = trips_processed / float(len(trips_to_route)) * 100.0
+                percent_done = trips_processed / \
+                    float(len(trips_to_route)) * 100.0
                 print "...processed %d trips (%.1f%% of total.)" \
                     % (trips_processed, percent_done)
         trip_results_by_graph[graph_name] = trip_results
