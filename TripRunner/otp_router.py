@@ -12,6 +12,7 @@ import TripItinerary
 import trip_analysis
 
 PROGRESS_PRINT_PERCENTAGE = 1
+ROUTE_RETRIES = 2
 
 def build_trip_spec_url_section(routing_params, trip_date,
         trip_time, origin_lon_lat, dest_lon_lat):
@@ -70,8 +71,13 @@ def route_trip(server_url, routing_params, trip_req_start_date,
         otp_router_id)
     #print url
 
-    response = urllib2.urlopen(url)
-    data = response.read()
+    data = None
+    try:
+        response = urllib2.urlopen(url)
+        data = response.read()
+    except URLError:
+        # In case of timeouts etc:- just return no data.
+        data = None
     return data
 
 def route_single_trip_multi_graphs_print_stats(server_url, routing_params,
@@ -87,16 +93,21 @@ def route_single_trip_multi_graphs_print_stats(server_url, routing_params,
         res_str = route_trip(server_url, routing_params,
             trip_req_start_date, trip_req_start_time, origin_lon_lat,
             dest_lon_lat, otp_router_id=graph_full)
-        res = json.loads(res_str)
-        #import pprint
-        #pp = pprint.PrettyPrinter(indent=2)
-        #pp.pprint(res)
-        itin_json = res['plan']['itineraries'][0]
-        print "\nRouting on the %s network/timetable, Requested trip stats:" \
-            % graph_name
-        ti = TripItinerary.TripItinerary(itin_json)
-        trip_analysis.print_single_trip_stats(origin_lon_lat, dest_lon_lat,
-            trip_req_start_dt, ti)
+        if res_str:
+            res = json.loads(res_str)
+            #import pprint
+            #pp = pprint.PrettyPrinter(indent=2)
+            #pp.pprint(res)
+            itin_json = res['plan']['itineraries'][0]
+            print "\nRouting on the %s network/timetable, Requested trip stats:" \
+                % graph_name
+            ti = TripItinerary.TripItinerary(itin_json)
+            trip_analysis.print_single_trip_stats(origin_lon_lat, dest_lon_lat,
+                trip_req_start_dt, ti)
+        else:
+            print "\nRouting on the %s network/timetable trip from %s to %s "\
+                "at %s :- failed to route." \
+                    % (origin_lon_at, dest_lon_lat, trip_req_start_dt)
     return
 
 def route_trip_set_on_graphs(server_url, routing_params,
@@ -151,9 +162,21 @@ def route_trip_set_on_graphs(server_url, routing_params,
                 trip_req_start_dt = trip[2]
                 trip_req_start_date = trip_req_start_dt.date()
                 trip_req_start_time = trip_req_start_dt.time()
-                res_str = route_trip(server_url, routing_params,
-                    trip_req_start_date, trip_req_start_time, trip[0],
-                    trip[1], otp_router_id=graph_full)
+                res_str = None
+                retries_remain = ROUTE_RETRIES
+                while not res_str and retries_remain > 0:
+                    res_str = route_trip(server_url, routing_params,
+                        trip_req_start_date, trip_req_start_time, trip[0],
+                        trip[1], otp_router_id=graph_full)
+                    if not res_str:
+                        retries_remain -= 1
+                if not res_str:
+                    print "\tWarning:- requested trip ID %s from %s to %s at "\
+                        "%s time on graph %s failed to route, after %d "\
+                        "retries. "\
+                        % (str(trip_id), trip[0], trip[1], trip[2], graph_name,
+                           ROUTE_RETRIES)
+                    
                 res = json.loads(res_str)
                 if not res['plan']:
                     print "\tWarning:- requested trip ID %s from %s to %s at %s "\
