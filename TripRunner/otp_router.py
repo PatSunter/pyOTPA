@@ -5,6 +5,7 @@ import urllib2
 import os.path
 import json
 import copy
+import time
 from datetime import datetime
 
 import otp_config
@@ -12,7 +13,10 @@ import TripItinerary
 import trip_analysis
 
 PROGRESS_PRINT_PERCENTAGE = 1
+
 ROUTE_RETRIES = 2
+SECONDS_TO_WAIT_BEFORE_RETRY = 10
+MAX_ALLOWED_FAIL_TO_GET_RESULT = 10
 
 def build_trip_spec_url_section(routing_params, trip_date,
         trip_time, origin_lon_lat, dest_lon_lat):
@@ -75,7 +79,7 @@ def route_trip(server_url, routing_params, trip_req_start_date,
     try:
         response = urllib2.urlopen(url)
         data = response.read()
-    except URLError:
+    except urllib2.URLError:
         # In case of timeouts etc:- just return no data.
         data = None
     return data
@@ -142,6 +146,7 @@ def route_trip_set_on_graphs(server_url, routing_params,
         trip_results = {}
         trips_routed = 0
         trips_processed = 0
+        trips_failed_to_get_result = 0
         print_increment = len(trips_to_route) * (PROGRESS_PRINT_PERCENTAGE / 100.0)
         next_print_total = print_increment
         sorted_trips_to_route = sorted(trips_to_route.iteritems())
@@ -153,6 +158,7 @@ def route_trip_set_on_graphs(server_url, routing_params,
                 next_id = sorted_trips_to_route[trip_ii+1][0]
                 output_fname_next = os.path.join(output_subdir,
                     "%s.json" % next_id)
+
             if resume_existing and os.path.exists(output_fname):
                 trips_processed += 1
             elif resume_existing and output_fname_next \
@@ -170,38 +176,42 @@ def route_trip_set_on_graphs(server_url, routing_params,
                         trip[1], otp_router_id=graph_full)
                     if not res_str:
                         retries_remain -= 1
+                        time.sleep(SECONDS_TO_WAIT_BEFORE_RETRY)
                 if not res_str:
                     print "\tWarning:- requested trip ID %s from %s to %s at "\
                         "%s time on graph %s failed to route, after %d "\
                         "retries. "\
                         % (str(trip_id), trip[0], trip[1], trip[2], graph_name,
                            ROUTE_RETRIES)
-                    
-                res = json.loads(res_str)
-                if not res['plan']:
-                    print "\tWarning:- requested trip ID %s from %s to %s at %s "\
-                        "time on graph %s failed to generate valid itererary. "\
-                        "Error msg returned by OTP router was:\n\t\t%s"\
-                        % (str(trip_id), trip[0], trip[1], trip[2], graph_name,
-                           res['error']['msg'])
-                    ti = None
-                else:    
-                    try:
-                        itin_json = res['plan']['itineraries'][0]
-                        ti = TripItinerary.TripItinerary(itin_json)
-                    except TypeError, IndexError:
-                        print "Unexpected failure to get trip itinerary from "\
-                            "received result."
+                    trips_processed += 1           
+                    trips_failed_to_get_result += 1
+                else:
+                    res = json.loads(res_str)
+                    if not res['plan']:
+                        print "\tWarning:- requested trip ID %s from %s to "\
+                            "%s at %s time on graph %s failed to generate "\
+                            "valid itererary. "\
+                            "Error msg returned by OTP router was:\n\t\t%s"\
+                            % (str(trip_id), trip[0], trip[1], trip[2],
+                               graph_name, res['error']['msg'])
                         ti = None
-                trip_results[trip_id] = ti    
-                if ti and save_incrementally:
-                    ti.save_to_file(output_fname)
-                #print "\nTrip from %s to %s, leaving "\
-                #    "at %s:" % (trip[0], trip[1], trip_req_start_dt)
-                #trip_analysis.print_single_trip_stats(trip[0], trip[1],
-                #    trip_req_start_dt, ti) 
-                trips_routed += 1
-                trips_processed += 1
+                    else:    
+                        try:
+                            itin_json = res['plan']['itineraries'][0]
+                            ti = TripItinerary.TripItinerary(itin_json)
+                        except TypeError, IndexError:
+                            print "Unexpected failure to get trip itinerary "\
+                                "from received result."
+                            ti = None
+                    trip_results[trip_id] = ti    
+                    if ti and save_incrementally:
+                        ti.save_to_file(output_fname)
+                    #print "\nTrip from %s to %s, leaving "\
+                    #    "at %s:" % (trip[0], trip[1], trip_req_start_dt)
+                    #trip_analysis.print_single_trip_stats(trip[0], trip[1],
+                    #    trip_req_start_dt, ti) 
+                    trips_routed += 1
+                    trips_processed += 1
 
             if trips_processed >= next_print_total:
                 while trips_processed >= next_print_total:
@@ -210,6 +220,11 @@ def route_trip_set_on_graphs(server_url, routing_params,
                     float(len(trips_to_route)) * 100.0
                 print "...processed %d trips (%.1f%% of total.)" \
                     % (trips_processed, percent_done)
+            if trips_failed_to_get_result >= MAX_ALLOWED_FAIL_TO_GET_RESULT:
+                print "Error:- %d trips on graph %s failed to get a routing "\
+                    "result back from server at URL %s:- giving up." \
+                    % (trips_failed_to_get_result, graph_name, server_url)
+                break
         trip_results_by_graph[graph_name] = trip_results
     return trip_results_by_graph
     
