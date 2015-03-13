@@ -64,6 +64,36 @@ class TripItinerary:
             / (total_trip_sec / (60 * 60.0))
         return trip_speed_along_route
 
+    def get_longest_walk_leg_dist_m(self):
+        longest_walk_leg_m = 0.0
+        for leg in self.json['legs']:
+            if leg['mode'] == 'WALK':
+                walk_len = leg['distance']
+                if walk_len > longest_walk_leg_m:
+                    longest_walk_leg_m = walk_len
+        return longest_walk_leg_m
+
+    def get_dist_m_by_mode(self):
+        dist_m_by_mode = {}
+        for leg in self.json['legs']:
+            mode = leg['mode']
+            if mode not in dist_m_by_mode:
+                dist_m_by_mode[mode] = leg['distance']
+            else:    
+                dist_m_by_mode[mode] += leg['distance']
+        return dist_m_by_mode
+
+    def get_time_sec_by_mode(self):
+        time_s_by_mode = {}
+        for leg in self.json['legs']:
+            mode = leg['mode']
+            time_sec = leg['duration'] / 1000.0
+            if mode not in time_s_by_mode:
+                time_s_by_mode[mode] = time_sec
+            else:    
+                time_s_by_mode[mode] += time_sec
+        return time_s_by_mode
+
     def save_to_file(self, output_fname):
         f = open(output_fname, 'w')
         f.write(json.dumps(self.json))
@@ -73,6 +103,7 @@ class TripItinerary:
 def read_trip_itin_from_file(input_fname):
     f = open(input_fname, 'r')
     itin_str = f.read()
+    f.close()
     itin_json = json.loads(itin_str)
     itin = TripItinerary(itin_json)
     return itin
