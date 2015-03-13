@@ -14,6 +14,7 @@ import trip_analysis
 
 PROGRESS_PRINT_PERCENTAGE = 1
 
+MAX_SECONDS_TO_WAIT_FOR_RESULT = 30
 ROUTE_RETRIES = 2
 SECONDS_TO_WAIT_BEFORE_RETRY = 10
 MAX_ALLOWED_FAIL_TO_GET_RESULT = 10
@@ -67,7 +68,8 @@ def build_trip_request_url(server_url, routing_params, trip_date, trip_time,
     return url
 
 def route_trip(server_url, routing_params, trip_req_start_date,
-        trip_req_start_time, origin_lon_lat, dest_lon_lat, otp_router_id):
+        trip_req_start_time, origin_lon_lat, dest_lon_lat, otp_router_id,
+        server_timeout=MAX_SECONDS_TO_WAIT_FOR_RESULT):
 
     url = build_trip_request_url(server_url, routing_params,
         trip_req_start_date, 
@@ -77,7 +79,7 @@ def route_trip(server_url, routing_params, trip_req_start_date,
 
     data = None
     try:
-        response = urllib2.urlopen(url)
+        response = urllib2.urlopen(url, timeout=server_timeout)
         data = response.read()
     except urllib2.URLError:
         # In case of timeouts etc:- just return no data.
