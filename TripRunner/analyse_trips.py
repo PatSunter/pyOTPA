@@ -17,6 +17,9 @@ def main():
         help='Name of shapefile containing specified trips.')
     parser.add_option('--trips_date', dest='trips_date',
         help='Departure date of trips. Must be in a format of YYYY-MM-DD.')
+    parser.add_option('--analyse_graphs', dest='analyse_graphs',
+        help="(optional) if specified, only these graphs' results will be "
+            "loaded and analysed.")
     parser.add_option('--create_comparison_shpfile',
         dest='create_comparison_shpfile', help='a pair of graph names you '\
             'want to create a comparison shapefile, visualising travel '\
@@ -56,16 +59,19 @@ def main():
             parser.print_help()
             parser.error("Error, the input for create_comparison_shpfile "
                 "must be a comma-separated pair of result directory names.")
-
     graph_names = None # Means graphs will be inferred from subdirectiries.
+    if options.analyse_graphs:
+        graph_names = options.analyse_graphs.split(',')
 
     trips_by_id, trips = \
         Trips_Generator.trips_io.read_trips_from_shp_file_otp_srs(
-        trips_shpfilename)
+            trips_shpfilename)
 
     trip_results_by_graph = trip_itins_io.load_trip_itineraries(
         output_base_dir, graph_names)
     trip_analysis.calc_print_mean_results(trip_results_by_graph.keys(),
+        trip_results_by_graph, trips_by_id, trip_req_start_date)
+    trip_analysis.calc_print_mean_results_by_dep_times(trip_results_by_graph.keys(),
         trip_results_by_graph, trips_by_id, trip_req_start_date)
 
     if comp_shp_graphs:
