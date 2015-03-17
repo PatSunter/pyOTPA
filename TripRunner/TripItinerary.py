@@ -73,6 +73,29 @@ class TripItinerary:
                     longest_walk_leg_m = walk_len
         return longest_walk_leg_m
 
+    def get_set_of_modes_used(self):
+        modes_used = set()
+        for leg in self.json['legs']:
+            modes_used.add(leg['mode'])
+        return modes_used
+
+    def get_mode_sequence(self):
+        modes_used_seq = []
+        for leg in self.json['legs']:
+            modes_used_seq.append(leg['mode'])
+        return modes_used_seq
+
+    def get_first_non_walk_mode(self):
+        first_non_walk_mode = None
+        if len(self.json['legs']) > 1 \
+                or self.json['legs'][0]['mode'] != 'WALK':
+            for leg in self.json['legs']:
+                if leg['mode'] != 'WALK':
+                    first_non_walk_mode = leg['mode']
+                    break
+            assert first_non_walk_mode
+        return first_non_walk_mode        
+
     def get_dist_m_by_mode(self):
         dist_m_by_mode = {}
         for leg in self.json['legs']:
@@ -82,6 +105,17 @@ class TripItinerary:
             else:    
                 dist_m_by_mode[mode] += leg['distance']
         return dist_m_by_mode
+
+    def get_agencies_set_sorted(self):
+        agencies_set = set()
+        for leg in self.json['legs']:
+            mode = leg['mode']
+            if mode == 'WALK': continue
+            agency = leg['agencyName']
+            agencies_set.add(agency)
+
+        agencies_sorted = tuple(sorted(list(agencies_set)))
+        return agencies_sorted
 
     def get_time_sec_by_mode(self):
         time_s_by_mode = {}
