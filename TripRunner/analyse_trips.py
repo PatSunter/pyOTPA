@@ -67,6 +67,41 @@ def main():
     trips_by_id, trips = \
         Trips_Generator.trips_io.read_trips_from_shp_file_otp_srs(
             trips_shpfilename)
+    trip_req_start_dts = trip_analysis.get_trip_req_start_dts(
+        trips_by_id, trip_req_start_date)
+
+    trip_results_by_graph = trip_itins_io.load_trip_itineraries(
+        output_base_dir, graph_names)
+
+    # Now apply various filters to the trip-set ...
+    def_desc = "all trips"
+    filtered_desc = "filtered to remove long walk legs"
+    longest_walk_len_km = trip_analysis.DEFAULT_LONGEST_WALK_LEN_KM
+    trip_results_by_graph_filtered = {}
+    for graph_name in trip_results_by_graph.keys():
+        trip_results = trip_results_by_graph[graph_name]
+        trip_ids_long_walk = \
+            trip_analysis.get_trip_ids_with_walk_leg_gr_than_dist_km(
+                trip_results, longest_walk_len_km)
+        trip_results_by_graph_filtered[graph_name] = \
+            trip_analysis.get_trips_subset_by_ids_to_exclude(trip_results, 
+                trip_ids_long_walk)
+
+    # Initially print high-level summaries
+    trip_analysis.calc_print_mean_results_overall_summaries(
+        trip_results_by_graph.keys(), trip_results_by_graph, 
+        trips_by_id, trip_req_start_dts, description=def_desc)
+
+    trip_analysis.calc_print_mean_results_overall_summaries(
+        trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
+        trips_by_id, trip_req_start_dts, description=filtered_desc)
+
+    # Print further, more advanced analysis just on the filtered trips for the
+    # moment.
+    trip_analysis.calc_print_mean_results_agg_by_mode_agency(
+        trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
+        trips_by_id, trip_req_start_dts, 
+        description=filtered_desc)
 
     dep_time_cats = {}
     dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
@@ -88,13 +123,23 @@ def main():
         'weekday_interpeak', 'weekday_arvo_peak', 'weekday_evening',
         'saturday', 'sunday']
 
-    trip_results_by_graph = trip_itins_io.load_trip_itineraries(
-        output_base_dir, graph_names)
-    trip_analysis.calc_print_mean_results(trip_results_by_graph.keys(),
-        trip_results_by_graph, trips_by_id, trip_req_start_date)
-    trip_analysis.calc_print_mean_results_by_dep_times(trip_results_by_graph.keys(),
-        trip_results_by_graph, trips_by_id, trip_req_start_date,
-        dep_time_cats, dep_time_print_order=dep_time_print_order)
+    trip_analysis.calc_print_mean_results_by_dep_times(
+        trip_results_by_graph.keys(), trip_results_by_graph, 
+        trips_by_id, trip_req_start_dts, dep_time_cats, 
+        description=def_desc,
+        dep_time_print_order=dep_time_print_order)
+
+    trip_analysis.calc_print_mean_results_by_dep_times(
+        trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
+        trips_by_id, trip_req_start_dts, dep_time_cats, 
+        description=filtered_desc,
+        dep_time_print_order=dep_time_print_order)
+
+    print "Summaries for individual routes (on filtered trips) were:"
+    for graph_name in trip_results_by_graph.keys():
+        print "*For graph %s:*" % graph_name
+        trip_analysis.calc_print_trip_info_by_mode_agency_route(
+            trip_results_by_graph_filtered[graph_name])
 
     if comp_shp_graphs:
         graph_name_1, graph_name_2 = comp_shp_graphs
@@ -102,7 +147,7 @@ def main():
             "%s-vs-%s.shp" % (graph_name_1, graph_name_2))
         trip_analysis.createTripsCompShapefile(trips_by_id, 
             (graph_name_1, graph_name_2),
-            trip_req_start_date,
+            trip_req_start_dts,
             trip_results_by_graph[graph_name_1], 
             trip_results_by_graph[graph_name_2],
             comp_shpfilename)

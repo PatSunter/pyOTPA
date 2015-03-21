@@ -386,6 +386,7 @@ def print_mean_results(mean_results_by_category, key_print_order=None):
               means['direct_speed'],
               means['walk_dist'],
               means['transfers'])
+    print ""
     return
 
 def get_trip_req_start_dts(trips_by_id, trip_req_start_date):
@@ -424,11 +425,26 @@ def get_trips_subset_by_ids_to_exclude(trip_results_dict, trip_ids_to_exclude):
                 "in trip_ids_to_exclude." % trip_id
     return trip_results_filtered
 
-def calc_print_mean_results(graph_names, trip_results_by_graph,
-        trips_by_id, trip_req_start_date, 
-        longest_walk_len_km=DEFAULT_LONGEST_WALK_LEN_KM):
-    trip_req_start_dts = get_trip_req_start_dts(trips_by_id,
-        trip_req_start_date)
+def calc_means_of_tripset_by_first_non_walk_mode(trip_results_by_graph,
+    trips_by_id, trip_req_start_dts):
+
+    trips_by_first_non_walk_mode = {}
+    means_by_first_non_walk_mode = {}
+    for graph_name, trip_results in trip_results_by_graph.iteritems():
+        # Further classify by first non-walk mode
+        trips_by_first_non_walk_mode[graph_name] = \
+            categorise_trip_ids_by_first_non_walk_mode(trip_results)
+        means_by_first_non_walk_mode[graph_name] = {}
+        for mode in OTP_NON_WALK_MODES:
+            means_by_first_non_walk_mode[graph_name][mode] = \
+                calc_means_of_tripset(
+                    trips_by_first_non_walk_mode[graph_name][mode],
+                    trips_by_id, trip_req_start_dts)
+    return means_by_first_non_walk_mode
+
+def calc_print_mean_results_overall_summaries(
+        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts, 
+        description=None):
 
     means = {}
     for graph_name in graph_names:
@@ -436,84 +452,76 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
         means[graph_name] = calc_means_of_tripset(
             trip_results, trips_by_id, trip_req_start_dts)
 
-    trip_results_filtered_by_graph = {}
+    if description:
+        extra_string = "(%s)" % description
+    else:
+        extra_string = ""
+
+    print "Overall %s mean results for the %d trips were:" \
+        % (extra_string, max(map(len, trip_results_by_graph.itervalues())))
+    print_mean_results(means)
+    return
+
+def calc_print_mean_results_agg_by_mode_agency(
+        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts, 
+        description=None):
+
+    sum_modes_in_trips = {}
+    sum_legs_by_mode = {}
+    sum_modal_dists = {}
+    sum_modal_times = {}
+    means_modal_times = {}
+    means_modal_dists = {}
+    means_modal_dist_leg = {}
+    means_modal_speeds = {}
+    means_init_waits_by_mode = {}
+    counts_init_waits_by_mode = {}
+    means_init_waits = {}
+    means_tfer_waits = {}
     for graph_name in graph_names:
         trip_results = trip_results_by_graph[graph_name]
-        trip_ids_long_walk = get_trip_ids_with_walk_leg_gr_than_dist_km(
-            trip_results, longest_walk_len_km)
-        trip_results_filtered_by_graph[graph_name] = \
-            get_trips_subset_by_ids_to_exclude(trip_results, 
-                trip_ids_long_walk)
-    means_filtered = {}
-    for graph_name in graph_names:
-        means_filtered[graph_name] = calc_means_of_tripset(
-            trip_results_filtered_by_graph[graph_name], 
-            trips_by_id, trip_req_start_dts)
-
-    sum_filtered_modes_in_trips = {}
-    sum_filtered_legs_by_mode = {}
-    sum_filtered_modal_dists = {}
-    sum_filtered_modal_times = {}
-    means_filtered_modal_times = {}
-    means_filtered_modal_dists = {}
-    means_filtered_modal_dist_leg = {}
-    means_filtered_modal_speeds = {}
-    means_filtered_init_waits_by_mode = {}
-    counts_filtered_init_waits_by_mode = {}
-    means_filtered_tfer_waits = {}
-    for graph_name in graph_names:
-        trip_results_filtered = trip_results_filtered_by_graph[graph_name]
-        sum_filtered_modes_in_trips[graph_name] = \
-            calc_num_trips_using_modes(trip_results_filtered)
-        sum_filtered_legs_by_mode[graph_name] = \
-            calc_total_legs_by_mode(trip_results_filtered)
-        sum_filtered_modal_dists[graph_name] = \
-            calc_sum_modal_distances(trip_results_filtered)
-        sum_filtered_modal_times[graph_name] = \
-            calc_sum_modal_times(trip_results_filtered)
-        means_filtered_modal_times[graph_name] = \
+        sum_modes_in_trips[graph_name] = \
+            calc_num_trips_using_modes(trip_results)
+        sum_legs_by_mode[graph_name] = \
+            calc_total_legs_by_mode(trip_results)
+        sum_modal_dists[graph_name] = \
+            calc_sum_modal_distances(trip_results)
+        sum_modal_times[graph_name] = \
+            calc_sum_modal_times(trip_results)
+        means_modal_times[graph_name] = \
             calc_mean_modal_times_per_all_trips(
-                sum_filtered_modal_times[graph_name],
-                len(trip_results_filtered))
-        means_filtered_modal_dists[graph_name] = \
+                sum_modal_times[graph_name], len(trip_results))
+        means_modal_dists[graph_name] = \
             calc_mean_modal_distances_per_all_trips(
-                sum_filtered_modal_dists[graph_name],
-                len(trip_results_filtered))
-        means_filtered_modal_dist_leg[graph_name] = \
+                sum_modal_dists[graph_name], len(trip_results))
+        means_modal_dist_leg[graph_name] = \
             calc_mean_modal_distances_per_leg_used(
-                sum_filtered_modal_dists[graph_name],
-                sum_filtered_legs_by_mode[graph_name])
-        means_filtered_modal_speeds[graph_name] = \
-            calc_mean_modal_speeds(trip_results_filtered)
+                sum_modal_dists[graph_name], sum_legs_by_mode[graph_name])
+        means_modal_speeds[graph_name] = \
+            calc_mean_modal_speeds(trip_results)
+        means_init_waits[graph_name] = \
+            calc_mean_init_waits(trip_results, trip_req_start_dts)
+        means_tfer_waits[graph_name] = \
+            calc_mean_tfer_waits(trip_results)
+    
+    for graph_name, trip_results in trip_results_by_graph.iteritems():
         miw_by_mode, ciw_by_mode = \
-            calc_mean_init_waits_by_mode(trip_results_filtered,
+            calc_mean_init_waits_by_mode(trip_results,
                 trip_req_start_dts)
-        means_filtered_init_waits_by_mode[graph_name] = miw_by_mode
-        counts_filtered_init_waits_by_mode[graph_name] = ciw_by_mode
-        means_filtered_tfer_waits[graph_name] = \
-            calc_mean_tfer_waits(trip_results_filtered)
-    
-    trips_by_first_non_walk_mode = {}
-    means_by_first_non_walk_mode = {}
-    for graph_name in graph_names:
-        # Further classify by first non-walk mode
-        trip_results_filtered = trip_results_filtered_by_graph[graph_name]
-        trips_by_first_non_walk_mode[graph_name] = \
-            categorise_trip_ids_by_first_non_walk_mode(trip_results_filtered)
-        means_by_first_non_walk_mode[graph_name] = {}
-        for mode in OTP_NON_WALK_MODES:
-            means_by_first_non_walk_mode[graph_name][mode] = \
-                calc_means_of_tripset(
-                    trips_by_first_non_walk_mode[graph_name][mode],
-                    trips_by_id, trip_req_start_dts)
-    
+        means_init_waits_by_mode[graph_name] = miw_by_mode
+        counts_init_waits_by_mode[graph_name] = ciw_by_mode
+
+    means_by_first_non_walk_mode = \
+        calc_means_of_tripset_by_first_non_walk_mode(
+            trip_results_by_graph, trips_by_id, trip_req_start_dts)
+
     trips_by_agencies_used = {}
     means_by_agencies_used = {}
     for graph_name in graph_names:
         # Further classify by agencies used
-        trip_results_filtered = trip_results_filtered_by_graph[graph_name]
+        trip_results = trip_results_by_graph[graph_name]
         trips_by_agencies_used[graph_name] = \
-            categorise_trips_by_agencies_used(trip_results_filtered)
+            categorise_trips_by_agencies_used(trip_results)
         means_by_agencies_used[graph_name] = {}
         for agency_tuple, trip_itins in \
                 trips_by_agencies_used[graph_name].iteritems():
@@ -521,42 +529,41 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
                 calc_means_of_tripset(trip_itins, trips_by_id,
                     trip_req_start_dts)
 
-    print "Overall (unfiltered) mean results for the %d trips were:" \
-        % (max(map(len, trip_results_by_graph.itervalues())))
-    print_mean_results(means)
-    print "\nOverall (filtered to remove long walk legs) mean results "\
-        "for the %d trips were:" \
-        % (max(map(len, trip_results_by_graph.itervalues())))
-    print_mean_results(means_filtered)
-    print "\n trip results (filtered) broken down by mode:"
+    if description:
+        extra_string = " (%s)" % description
+    else:
+        extra_string = ""
+    print "\nTrip results%s: aggregated by mode were:" % extra_string
     for graph_name in graph_names:
-        print "For graph %s, aggregated results for mode use were:" % graph_name
+        print "For graph %s, aggregated results for mode use were:" \
+            % graph_name
         print "  mode, mean time (all trips), mean dist (all trips), "\
             "# trips used in, # legs, total dist (km), "\
             "mean dist/leg (m), mean in-vehicle speed (km/h)"
         for mode in OTP_MODES:
-            mode_time = means_filtered_modal_times[graph_name][mode]
-            mode_dist = means_filtered_modal_dists[graph_name][mode]
-            mode_in_trip_cnt = sum_filtered_modes_in_trips[graph_name][mode]
-            mode_legs_cnt = sum_filtered_legs_by_mode[graph_name][mode]
-            mode_sum_dist = sum_filtered_modal_dists[graph_name][mode]
-            mode_dist_leg = means_filtered_modal_dist_leg[graph_name][mode]
-            mode_speed = means_filtered_modal_speeds[graph_name][mode]
+            mode_time = means_modal_times[graph_name][mode]
+            mode_dist = means_modal_dists[graph_name][mode]
+            mode_in_trip_cnt = sum_modes_in_trips[graph_name][mode]
+            mode_legs_cnt = sum_legs_by_mode[graph_name][mode]
+            mode_sum_dist = sum_modal_dists[graph_name][mode]
+            mode_dist_leg = means_modal_dist_leg[graph_name][mode]
+            mode_speed = means_modal_speeds[graph_name][mode]
             print "  %s, %s, %.1f m, %d, %d, %.2f km, %.1f m, %.2f," \
                 % (mode, mode_time, mode_dist, mode_in_trip_cnt, \
                    mode_legs_cnt, mode_sum_dist, mode_dist_leg, mode_speed)
-        print "  initial wait, %s, " % means_filtered[graph_name]['init_wait']
-        print "  transfer wait, %s, " % means_filtered_tfer_waits[graph_name]
+        print "  initial wait, %s, " % means_init_waits[graph_name]
+        print "  transfer wait, %s, " % means_tfer_waits[graph_name]
 
         print "\n  mean init waits, total trip times, trip overall speeds, "\
             "by first non-walk mode:"
         for mode in OTP_NON_WALK_MODES:
             print "    %s: %s, %s, %.2f km/h (%d trips)" % (mode, \
-                means_filtered_init_waits_by_mode[graph_name][mode],
+                means_init_waits_by_mode[graph_name][mode],
                 means_by_first_non_walk_mode[graph_name][mode]['total_time'],
                 means_by_first_non_walk_mode[graph_name][mode]['direct_speed'],
-                counts_filtered_init_waits_by_mode[graph_name][mode])
+                counts_init_waits_by_mode[graph_name][mode])
         print ""
+
         print "  mean init waits, total trip times, trip overall speeds, "\
             "by agencies used (sorted by speed):"
         agency_tups_and_means_sorted_by_spd = sorted(
@@ -574,11 +581,11 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
     #import pdb
     #pdb.set_trace()
 
-    print "Further info by mode, agency, route:"
-    for graph_name in graph_names:
-        print "*For graph %s:*" % graph_name
-        calc_print_trip_info_by_mode_agency_route(
-            trip_results_filtered_by_graph[graph_name])
+    #print "Further info by mode, agency, route:"
+    #for graph_name in graph_names:
+    #    print "*For graph %s:*" % graph_name
+    #    calc_print_trip_info_by_mode_agency_route(
+    #        trip_results_by_graph[graph_name])
     return
 
 def get_results_in_dep_time_range(trip_results, trip_req_start_dts,
@@ -593,9 +600,8 @@ def get_results_in_dep_time_range(trip_results, trip_req_start_dts,
     return trip_results_subset
 
 def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
-        trips_by_id, trip_req_start_date,
-        dep_time_cats,
-        longest_walk_len_km=DEFAULT_LONGEST_WALK_LEN_KM,
+        trips_by_id, trip_req_start_dts,
+        dep_time_cats, description=None,
         dep_time_print_order=None ):
     """Similar to the normal mean-printing function:- but this time breaks
     down results into categories based on departure times.
@@ -611,44 +617,29 @@ def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
     ([0,1,2,3,4], time(18,30), time(23,59,59))   
     """
 
-    trip_req_start_dts = get_trip_req_start_dts(trips_by_id,
-        trip_req_start_date)
-
-    means = {}
-    means_filtered = {}
+    means_by_deptime = {}
     for graph_name in graph_names:
-        means[graph_name] = {}
-        means_filtered[graph_name] = {}
+        means_by_deptime[graph_name] = {}
         trip_results_graph = trip_results_by_graph[graph_name]
         for dep_time_cat, dt_info in dep_time_cats.iteritems():
             trip_results_for_dep_time_cat = get_results_in_dep_time_range(
                 trip_results_graph, trip_req_start_dts, dt_info)
-            trip_ids_long_walk = get_trip_ids_with_walk_leg_gr_than_dist_km(
-                trip_results_for_dep_time_cat, longest_walk_len_km)
-            trip_results_filtered = copy.copy(trip_results_for_dep_time_cat)
-            for trip_id in trip_ids_long_walk:
-                del(trip_results_filtered[trip_id])
-            means[graph_name][dep_time_cat] = calc_means_of_tripset(
+            means_by_deptime[graph_name][dep_time_cat] = calc_means_of_tripset(
                 trip_results_for_dep_time_cat, trips_by_id,
                 trip_req_start_dts)
-            means_filtered[graph_name][dep_time_cat] = calc_means_of_tripset(
-                trip_results_filtered, trips_by_id,
-                trip_req_start_dts)
 
-    print "\nMean results for the %d trips, by time period, were:" \
-        % (max(map(len, trip_results_by_graph.itervalues())))
+    if description:
+        extra_string = " (%s)" % description
+    else:
+        extra_string = ""
+    print "\nMean results for the %d trips%s, by departure time period, were:" \
+        % (max(map(len, trip_results_by_graph.itervalues())), extra_string)
     for graph_name in graph_names:
         print "For graph name '%s':" % graph_name
-        print_mean_results(means[graph_name], dep_time_print_order)    
-    print "\nMean results for the %d trips, by time period (filtered for max "\
-        "walk dist), were:" \
-        % (max(map(len, trip_results_by_graph.itervalues())))
-    for graph_name in graph_names:
-        print "For graph name '%s':" % graph_name
-        print_mean_results(means_filtered[graph_name], dep_time_print_order)    
+        print_mean_results(means_by_deptime[graph_name], dep_time_print_order)
     return        
 
-def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_date,
+def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_dts,
         trip_results_1, trip_results_2, shapefilename):
     """Creates a Shape file stating the difference between times in two
     sets of results for the same set of trips.
@@ -701,11 +692,8 @@ def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_date,
 
     for trip_id in sorted(trips_by_id.iterkeys()):
         trip = trips_by_id[trip_id]
-        if isinstance(trip[2], datetime):
-            trip_req_start_dt = trip[2]
-        else:
-            trip_req_start_dt = datetime.combine(trip_req_start_date, 
-                trip[2])
+        trip_req_start_dt = trip_req_start_dts[trip_id]
+
         try:
             trip_res_1 = trip_results_1[trip_id]
             trip_res_2 = trip_results_2[trip_id]
