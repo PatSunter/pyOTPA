@@ -3,6 +3,7 @@
 import os.path
 from datetime import date, datetime
 from optparse import OptionParser
+from datetime import time
 
 import Trips_Generator.trips_io
 import trip_itins_io
@@ -67,12 +68,33 @@ def main():
         Trips_Generator.trips_io.read_trips_from_shp_file_otp_srs(
             trips_shpfilename)
 
+    dep_time_cats = {}
+    dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
+        time(4,00), time(7,00))
+    dep_time_cats['weekday_morning_peak'] = ([0,1,2,3,4],
+        time(7,00), time(10,00))
+    dep_time_cats['weekday_interpeak'] = ([0,1,2,3,4],
+        time(10,00), time(16,00))
+    dep_time_cats['weekday_arvo_peak'] = ([0,1,2,3,4],
+        time(16,00), time(18,30))
+    dep_time_cats['weekday_evening'] = ([0,1,2,3,4],
+        time(18,30), time(23,59,59))
+    dep_time_cats['saturday'] = ([5],
+        time(0,00), time(23,59,59))
+    dep_time_cats['sunday'] = ([6],
+        time(0,00), time(23,59,59))
+    dep_time_print_order = [
+        'weekday_morning_early', 'weekday_morning_peak',
+        'weekday_interpeak', 'weekday_arvo_peak', 'weekday_evening',
+        'saturday', 'sunday']
+
     trip_results_by_graph = trip_itins_io.load_trip_itineraries(
         output_base_dir, graph_names)
     trip_analysis.calc_print_mean_results(trip_results_by_graph.keys(),
         trip_results_by_graph, trips_by_id, trip_req_start_date)
     trip_analysis.calc_print_mean_results_by_dep_times(trip_results_by_graph.keys(),
-        trip_results_by_graph, trips_by_id, trip_req_start_date)
+        trip_results_by_graph, trips_by_id, trip_req_start_date,
+        dep_time_cats, dep_time_print_order=dep_time_print_order)
 
     if comp_shp_graphs:
         graph_name_1, graph_name_2 = comp_shp_graphs

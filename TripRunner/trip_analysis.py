@@ -540,6 +540,8 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
                    means['direct_speed'],
                    means['n_trips'])
         print ""
+    #import pdb
+    #pdb.set_trace()
 
     print "Further info by mode, agency, route:"
     for graph_name in graph_names:
@@ -561,7 +563,22 @@ def get_results_in_dep_time_range(trip_results, trip_req_start_dts,
 
 def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
         trips_by_id, trip_req_start_date,
-        longest_walk_len_km=DEFAULT_LONGEST_WALK_LEN_KM):
+        dep_time_cats,
+        longest_walk_len_km=DEFAULT_LONGEST_WALK_LEN_KM,
+        dep_time_print_order=None ):
+    """Similar to the normal mean-printing function:- but this time breaks
+    down results into categories based on departure times.
+    These are given by input dictionary 'dep_time_cats': with each entry
+    being key being a time category string (e.g. 'weekday_morning_early')
+    mapped to a tuple of the form:
+    (dow_list, time_start, time_end)
+    * dow_list is a list of days-of-the-week matching the Python datetime
+      class's weekday() function :- where 0 is Monday, etc.
+    * time_start and time_end are both Python time instances listing when that
+      time category begins and ends.
+    * E.g. here is a tuple for weekday evenings between 6:30PM and midnight:
+    ([0,1,2,3,4], time(18,30), time(23,59,59))   
+    """
     dep_time_cats = {}
     dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
         time(4,00), time(7,00))
