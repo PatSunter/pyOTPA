@@ -579,25 +579,6 @@ def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
     * E.g. here is a tuple for weekday evenings between 6:30PM and midnight:
     ([0,1,2,3,4], time(18,30), time(23,59,59))   
     """
-    dep_time_cats = {}
-    dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
-        time(4,00), time(7,00))
-    dep_time_cats['weekday_morning_peak'] = ([0,1,2,3,4],
-        time(7,00), time(10,00))
-    dep_time_cats['weekday_interpeak'] = ([0,1,2,3,4],
-        time(10,00), time(16,00))
-    dep_time_cats['weekday_arvo_peak'] = ([0,1,2,3,4],
-        time(16,00), time(18,30))
-    dep_time_cats['weekday_evening'] = ([0,1,2,3,4],
-        time(18,30), time(23,59,59))
-    dep_time_cats['saturday'] = ([5],
-        time(0,00), time(23,59,59))
-    dep_time_cats['sunday'] = ([6],
-        time(0,00), time(23,59,59))
-    dep_time_print_order = [
-        'weekday_morning_early', 'weekday_morning_peak',
-        'weekday_interpeak', 'weekday_arvo_peak', 'weekday_evening',
-        'saturday', 'sunday']
 
     trip_req_start_dts = get_trip_req_start_dts(trips_by_id,
         trip_req_start_date)
