@@ -8,7 +8,9 @@ import geom_utils
 import time_utils
 
 DEFAULT_LONGEST_WALK_LEN_KM = 1.2
-ALL_MODES_OTP = ['WALK', 'BUS', 'TRAM', 'SUBWAY']
+OTP_MODES = ['WALK', 'BUS', 'TRAM', 'SUBWAY']
+OTP_WALK_MODE = 'WALK'
+OTP_NON_WALK_MODES = filter(lambda x: x != OTP_WALK_MODE, OTP_MODES)
 
 ########################
 ## Analysis and Printing
@@ -102,8 +104,7 @@ def calc_mean_tfer_waits(trip_itins):
 def calc_mean_init_waits_by_mode(trip_itins, trip_req_start_dts):
     sum_modal_init_waits = {}
     cnt_modal_init_waits = {}
-    for mode in ALL_MODES_OTP:
-        if mode == 'WALK': continue
+    for mode in OTP_NON_WALK_MODES:
         sum_modal_init_waits[mode] = timedelta(0)
         cnt_modal_init_waits[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
@@ -115,8 +116,7 @@ def calc_mean_init_waits_by_mode(trip_itins, trip_req_start_dts):
             sum_modal_init_waits[first_non_walk_mode] += trip_init_wait
             cnt_modal_init_waits[first_non_walk_mode] += 1
     mean_modal_init_waits = {}
-    for mode in ALL_MODES_OTP:
-        if mode == 'WALK': continue
+    for mode in OTP_NON_WALK_MODES:
         total_sec = time_utils.get_total_sec(sum_modal_init_waits[mode])
         mean_sec = total_sec / float(cnt_modal_init_waits[mode])
         mean_modal_init_waits[mode] = timedelta(seconds=mean_sec)
@@ -145,7 +145,7 @@ def calc_mean_direct_speed(trip_itins, trips_by_id, trip_req_start_dts):
 
 def calc_num_trips_using_modes(trip_itins):
     modes_used_in_trip_counts = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         modes_used_in_trip_counts[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         modes_used = trip_itin.get_set_of_modes_used()
@@ -155,7 +155,7 @@ def calc_num_trips_using_modes(trip_itins):
 
 def calc_total_legs_by_mode(trip_itins):
     num_legs_of_modes = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         num_legs_of_modes[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         mode_legs = trip_itin.get_mode_sequence()
@@ -167,7 +167,7 @@ def calc_sum_modal_distances(trip_itins):
     """Calculate the sum of OTP's reported in-vehicle travel distances,
     per-mode, over all trips."""
     sum_modal_distances = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         sum_modal_distances[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         trip_modal_dists = trip_itin.get_dist_m_by_mode()
@@ -179,7 +179,7 @@ def calc_mean_modal_distances_per_all_trips(sum_modal_distances, n_trips_total):
     """Calculate the mean time, per-mode, over _all_ trips:- not just
     the ones where that mode was used."""
     means_modal_distances = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         means_modal_distances[mode] = sum_modal_distances[mode] / \
             n_trips_total
     return means_modal_distances
@@ -189,7 +189,7 @@ def calc_mean_modal_distances_per_leg_used(sum_modal_distances,
     """Calculate the mean distance travelled, per-mode, over legs travelled on
     each mode."""
     means_modal_distances = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         means_modal_distances[mode] = sum_modal_distances[mode] / \
             n_legs_per_mode[mode]
     return means_modal_distances
@@ -198,7 +198,7 @@ def calc_sum_modal_times(trip_itins):
     """Calculate the sum of in-vehicle travel time, per-mode, over all
     trips."""
     sums_modal_times = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         sums_modal_times[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         trip_modal_times = trip_itin.get_time_sec_by_mode()
@@ -210,7 +210,7 @@ def calc_mean_modal_times_per_all_trips(sums_modal_times, n_trips_total):
     """Calculate the mean time spent, per-mode, over _all_ trips:- not just the ones
     where that mode was used."""
     means_modal_times = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         mean_time_s = sums_modal_times[mode] / \
             n_trips_total
         means_modal_times[mode] = timedelta(seconds=mean_time_s)
@@ -219,7 +219,7 @@ def calc_mean_modal_times_per_all_trips(sums_modal_times, n_trips_total):
 def calc_mean_modal_times_per_leg_used(sums_modal_times, n_legs_per_mode):
     """Calculate the mean time spent, per-mode, over legs using that mode."""
     means_modal_times = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         mean_time_s = sums_modal_times[mode] / \
             n_trips_total
         means_modal_times[mode] = timedelta(seconds=mean_time_s)
@@ -228,7 +228,7 @@ def calc_mean_modal_times_per_leg_used(sums_modal_times, n_legs_per_mode):
 def calc_mean_modal_speeds(trip_itins):
     sums_modal_speeds = {}
     n_modal_speeds = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         sums_modal_speeds[mode] = 0
         n_modal_speeds[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
@@ -246,7 +246,7 @@ def calc_mean_modal_speeds(trip_itins):
                     "time = %.2fs (inf speed)" % (trip_id, mode, dist, time_s)
                 print "Not including this in the average."
     means_modal_speeds = {}
-    for mode in ALL_MODES_OTP:
+    for mode in OTP_MODES:
         mean_spd_km_h = sums_modal_speeds[mode] / \
             float(n_modal_speeds[mode])
         means_modal_speeds[mode] = mean_spd_km_h
@@ -279,8 +279,7 @@ def get_trip_ids_with_walk_leg_gr_than_dist_km(trip_results, dist_km):
 
 def categorise_trip_ids_by_first_non_walk_mode(trip_itins):
     trips_by_first_mode = {}
-    for mode in ALL_MODES_OTP:
-        if mode == 'WALK': continue
+    for mode in OTP_NON_WALK_MODES:
         trips_by_first_mode[mode] = {}
     for trip_id, trip_itin in trip_itins.iteritems():
         first_non_walk_mode = trip_itin.get_first_non_walk_mode()
@@ -302,52 +301,64 @@ def categorise_trips_by_agencies_used(trip_itins):
 
 def categorise_trip_ids_by_mode_agency_route(trip_itins):
     trips_by_mar = {}
-    for mode in ALL_MODES_OTP:
-        if mode == 'WALK': continue
+    trips_by_mar_legs = {}
+    for mode in OTP_NON_WALK_MODES:
         trips_by_mar[mode] = {}
+        trips_by_mar_legs[mode] = {}
     for trip_id, trip_itin in trip_itins.iteritems():
         legs = trip_itin.json['legs']
         for leg_i, leg in enumerate(legs):
             mode = leg['mode']
-            if mode == 'WALK': continue
+            if mode == OTP_WALK_MODE: continue
             a_name = leg['agencyName']
             r_s_name = leg['routeShortName']
             r_l_name = leg['routeLongName']
+            r_tup = (r_s_name, r_l_name)
             if a_name not in trips_by_mar[mode]:
                 trips_by_mar[mode][a_name] = {}
+                trips_by_mar_legs[mode][a_name] = {}
             if (r_s_name, r_l_name) not in trips_by_mar[mode][a_name]:
-                trips_by_mar[mode][a_name][(r_s_name, r_l_name)] = {}
-            trips_by_mar[mode][a_name][(r_s_name, r_l_name)][trip_id] = \
-                (trip_itin, leg_i)
-    return trips_by_mar
+                trips_by_mar[mode][a_name][r_tup] = {}
+                trips_by_mar_legs[mode][a_name][r_tup] = {}
+
+            trips_by_mar[mode][a_name][r_tup][trip_id] = \
+                trip_itin
+            if trip_id in trips_by_mar_legs[mode][a_name][r_tup]:
+                trips_by_mar_legs[mode][a_name][r_tup][trip_id].append(leg_i)
+            else:
+                trips_by_mar_legs[mode][a_name][r_tup][trip_id] = [leg_i]
+    return trips_by_mar, trips_by_mar_legs
 
 def calc_print_trip_info_by_mode_agency_route(trip_itins):
-    trips_by_mar = categorise_trip_ids_by_mode_agency_route(trip_itins)
+    trips_by_mar, trips_by_mar_legs = categorise_trip_ids_by_mode_agency_route(
+        trip_itins)
     for mode, trips_by_ar in trips_by_mar.iteritems():
         print "For mode %s:" % mode
         for agency, trips_by_r in trips_by_ar.iteritems():
             print "  for agency %s:" % agency
-            for route, trip_leg_tuples in trips_by_r.iteritems():
+            for route, trip_itins in trips_by_r.iteritems():
                 r_short_name, r_l_name = route
                 print "    for route %s, %s:" % (r_short_name, r_l_name)
-                sum_legs = len(trip_leg_tuples)
-                sum_trips = len(set(trip_leg_tuples.iterkeys()))
+                sum_trips = len(trip_itins)
+                sum_legs = 0
                 sum_dist = 0
                 sum_duration = 0
                 sum_speeds_km_h = 0
                 valid_speeds_cnt = 0
-                for trip_id, trip_tuple in trip_leg_tuples.iteritems():
-                    trip_itin, leg_i = trip_tuple
-                    leg_dist_m = trip_itin.json['legs'][leg_i]['distance'] 
-                    leg_time_s = trip_itin.json['legs'][leg_i]['duration'] \
-                        / 1000.0
-                    sum_dist += leg_dist_m
-                    sum_duration += leg_time_s
-                    if leg_time_s > 0:
-                        leg_speed_km_h = (leg_dist_m / 1000.0) \
-                            / (leg_time_s / (60 * 60))
-                        sum_speeds_km_h += leg_speed_km_h
-                        valid_speeds_cnt += 1
+                for trip_id, trip_itin in trip_itins.iteritems():
+                    leg_is = trips_by_mar_legs[mode][agency][route][trip_id] 
+                    sum_legs += len(leg_is)
+                    for leg_i in leg_is:
+                        leg_dist_m = trip_itin.json['legs'][leg_i]['distance'] 
+                        leg_time_s = trip_itin.json['legs'][leg_i]['duration'] \
+                            / 1000.0
+                        sum_dist += leg_dist_m
+                        sum_duration += leg_time_s
+                        if leg_time_s > 0:
+                            leg_speed_km_h = (leg_dist_m / 1000.0) \
+                                / (leg_time_s / (60 * 60))
+                            sum_speeds_km_h += leg_speed_km_h
+                            valid_speeds_cnt += 1
                 avg_dist_km = sum_dist / float(sum_legs) / 1000.0    
                 mean_speed_km_h = sum_speeds_km_h / float(valid_speeds_cnt)
                 print "      Used in %d legs, %d trips, for %.2f km " \
@@ -387,6 +398,32 @@ def get_trip_req_start_dts(trips_by_id, trip_req_start_date):
                 trip[2])
     return trip_req_start_dts
 
+def get_trips_subset_by_ids(trip_results_dict, trip_ids_to_select):
+    trip_results_filtered = {}
+    for trip_id in trip_ids_to_select:
+        try:
+            trip_results_filtered[trip_id] = trip_results_dict[trip_id]
+        except KeyError:
+            raise ValueError("Input trip_results_dict didn't contain at "\
+                "least one of the trip IDs ('%s') you requested in "\
+                "trip_ids_to_select." % trip_id)
+    return trip_results_filtered
+
+def get_trips_subset_by_ids_to_exclude(trip_results_dict, trip_ids_to_exclude):
+    # In the excluding IDs case:- start by creating a copy of the entire 
+    # first dict:- since it will be faster to just delete dictionary entries
+    # that are excluded. copy.copy just creates a new dictionary pointing to
+    # the same actual entries in memory, so this won't waste lots of space.
+    trip_results_filtered = copy.copy(trip_results_dict)
+    for trip_id in trip_ids_to_exclude:
+        try:
+            del(trip_results_filtered[trip_id])
+        except KeyError:
+            print "Warning: Input trip_results_dict didn't contain at "\
+                "least one of the trip IDs ('%s') you requested to exclude "\
+                "in trip_ids_to_exclude." % trip_id
+    return trip_results_filtered
+
 def calc_print_mean_results(graph_names, trip_results_by_graph,
         trips_by_id, trip_req_start_date, 
         longest_walk_len_km=DEFAULT_LONGEST_WALK_LEN_KM):
@@ -404,18 +441,14 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
         trip_results = trip_results_by_graph[graph_name]
         trip_ids_long_walk = get_trip_ids_with_walk_leg_gr_than_dist_km(
             trip_results, longest_walk_len_km)
-        #trip_results_filtered = get_trips_subset_by_id(trip_results, trip_ids_ok_walk)
-        trip_results_filtered = {}
-        trip_results_filtered = copy.copy(trip_results)
-        for trip_id in trip_ids_long_walk:
-            del(trip_results_filtered[trip_id])
-        trip_results_filtered_by_graph[graph_name] = trip_results_filtered
-        
+        trip_results_filtered_by_graph[graph_name] = \
+            get_trips_subset_by_ids_to_exclude(trip_results, 
+                trip_ids_long_walk)
     means_filtered = {}
     for graph_name in graph_names:
-        trip_results_filtered = trip_results_filtered_by_graph[graph_name]
         means_filtered[graph_name] = calc_means_of_tripset(
-            trip_results_filtered, trips_by_id, trip_req_start_dts)
+            trip_results_filtered_by_graph[graph_name], 
+            trips_by_id, trip_req_start_dts)
 
     sum_filtered_modes_in_trips = {}
     sum_filtered_legs_by_mode = {}
@@ -468,8 +501,7 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
         trips_by_first_non_walk_mode[graph_name] = \
             categorise_trip_ids_by_first_non_walk_mode(trip_results_filtered)
         means_by_first_non_walk_mode[graph_name] = {}
-        for mode in ALL_MODES_OTP:
-            if mode == 'WALK': continue
+        for mode in OTP_NON_WALK_MODES:
             means_by_first_non_walk_mode[graph_name][mode] = \
                 calc_means_of_tripset(
                     trips_by_first_non_walk_mode[graph_name][mode],
@@ -502,7 +534,7 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
         print "  mode, mean time (all trips), mean dist (all trips), "\
             "# trips used in, # legs, total dist (km), "\
             "mean dist/leg (m), mean in-vehicle speed (km/h)"
-        for mode in ALL_MODES_OTP:
+        for mode in OTP_MODES:
             mode_time = means_filtered_modal_times[graph_name][mode]
             mode_dist = means_filtered_modal_dists[graph_name][mode]
             mode_in_trip_cnt = sum_filtered_modes_in_trips[graph_name][mode]
@@ -518,8 +550,7 @@ def calc_print_mean_results(graph_names, trip_results_by_graph,
 
         print "\n  mean init waits, total trip times, trip overall speeds, "\
             "by first non-walk mode:"
-        for mode in ALL_MODES_OTP:
-            if mode == 'WALK': continue
+        for mode in OTP_NON_WALK_MODES:
             print "    %s: %s, %s, %.2f km/h (%d trips)" % (mode, \
                 means_filtered_init_waits_by_mode[graph_name][mode],
                 means_by_first_non_walk_mode[graph_name][mode]['total_time'],
