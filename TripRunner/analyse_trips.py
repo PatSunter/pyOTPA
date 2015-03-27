@@ -103,6 +103,8 @@ def main():
         trips_by_id, trip_req_start_dts, 
         description=filtered_desc)
 
+    # TODO:- really should be reading these in from CSV - and saving results
+    # likewise.
     dep_time_cats = {}
     dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
         time(4,00), time(7,00))
@@ -135,11 +137,13 @@ def main():
         description=filtered_desc,
         dep_time_print_order=dep_time_print_order)
 
-    print "Summaries for individual routes (on filtered trips) were:"
+    print "Saving info for individual routes (on filtered trips) to files:"
     for graph_name in trip_results_by_graph.keys():
-        print "*For graph %s:*" % graph_name
+        output_fname = os.path.join(output_base_dir, 
+            "route_totals-%s.csv" % graph_name)
+        print "For graph %s: to %s" % (graph_name, output_fname)
         trip_analysis.calc_print_trip_info_by_mode_agency_route(
-            trip_results_by_graph_filtered[graph_name])
+            trip_results_by_graph_filtered[graph_name], output_fname)
 
     if comp_shp_graphs:
         graph_name_1, graph_name_2 = comp_shp_graphs

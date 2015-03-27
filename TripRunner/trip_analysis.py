@@ -1,3 +1,5 @@
+import sys
+import csv
 import os, os.path
 from datetime import datetime, timedelta, time
 import itertools
@@ -11,6 +13,9 @@ DEFAULT_LONGEST_WALK_LEN_KM = 1.2
 OTP_MODES = ['WALK', 'BUS', 'TRAM', 'SUBWAY']
 OTP_WALK_MODE = 'WALK'
 OTP_NON_WALK_MODES = filter(lambda x: x != OTP_WALK_MODE, OTP_MODES)
+
+# Numbers of decimal places to round various outputs to.
+OUTPUT_ROUND_DIST_KM = 3
 
 ########################
 ## Analysis and Printing
@@ -311,13 +316,14 @@ def categorise_trip_ids_by_mode_agency_route(trip_itins):
             mode = leg['mode']
             if mode == OTP_WALK_MODE: continue
             a_name = leg['agencyName']
+            r_id = leg['routeId']
             r_s_name = leg['routeShortName']
             r_l_name = leg['routeLongName']
-            r_tup = (r_s_name, r_l_name)
+            r_tup = (r_id, r_s_name, r_l_name)
             if a_name not in trips_by_mar[mode]:
                 trips_by_mar[mode][a_name] = {}
                 trips_by_mar_legs[mode][a_name] = {}
-            if (r_s_name, r_l_name) not in trips_by_mar[mode][a_name]:
+            if r_tup not in trips_by_mar[mode][a_name]:
                 trips_by_mar[mode][a_name][r_tup] = {}
                 trips_by_mar_legs[mode][a_name][r_tup] = {}
 
@@ -329,16 +335,31 @@ def categorise_trip_ids_by_mode_agency_route(trip_itins):
                 trips_by_mar_legs[mode][a_name][r_tup][trip_id] = [leg_i]
     return trips_by_mar, trips_by_mar_legs
 
-def calc_print_trip_info_by_mode_agency_route(trip_itins):
+def calc_print_trip_info_by_mode_agency_route(trip_itins, output_fname):
     trips_by_mar, trips_by_mar_legs = categorise_trip_ids_by_mode_agency_route(
         trip_itins)
+    
+    TRIP_INFO_BY_ROUTE_HEADERS = ['Mode', 'Agency', 'R ID', 'R S name', 
+        'R L name', 'n trips', 'n legs', 'tot dist (km)', 
+        'mean dist/leg (km)', 'mean speed (km/h)']
+
+    if sys.version_info >= (3,0,0):
+        csv_file = open(output_fname, 'w', newline='')
+    else:
+        csv_file = open(output_fname, 'wb')
+
+    writer = csv.writer(csv_file, delimiter=',')
+
+    writer.writerow(TRIP_INFO_BY_ROUTE_HEADERS)
+
     for mode, trips_by_ar in trips_by_mar.iteritems():
-        print "For mode %s:" % mode
+        #print "For mode %s:" % mode
         for agency, trips_by_r in trips_by_ar.iteritems():
-            print "  for agency %s:" % agency
+            #print "  for agency %s:" % agency
+            out_row_base = [mode, agency]
             for route, trip_itins in trips_by_r.iteritems():
-                r_short_name, r_l_name = route
-                print "    for route %s, %s:" % (r_short_name, r_l_name)
+                r_id, r_short_name, r_l_name = route
+                #print "    for route %s, %s:" % (r_short_name, r_l_name)
                 sum_trips = len(trip_itins)
                 sum_legs = 0
                 sum_dist = 0
@@ -359,13 +380,21 @@ def calc_print_trip_info_by_mode_agency_route(trip_itins):
                                 / (leg_time_s / (60 * 60))
                             sum_speeds_km_h += leg_speed_km_h
                             valid_speeds_cnt += 1
+                sum_dist_km = sum_dist / 1000.0            
                 avg_dist_km = sum_dist / float(sum_legs) / 1000.0    
                 mean_speed_km_h = sum_speeds_km_h / float(valid_speeds_cnt)
-                print "      Used in %d legs, %d trips, for %.2f km " \
-                    "(avg %.2f km/leg), at avg speed of %.2f km/hr" \
-                    % (sum_legs, sum_trips, sum_dist / 1000.0, \
-                       avg_dist_km, mean_speed_km_h)
-            print ""
+                #print "      Used in %d legs, %d trips, for %.2f km " \
+                #    "(avg %.2f km/leg), at avg speed of %.2f km/hr" \
+                #    % (sum_legs, sum_trips, sum_dist / 1000.0, \
+                #       avg_dist_km, mean_speed_km_h)
+                out_row = out_row_base + [r_id, r_short_name, r_l_name, \
+                    sum_trips, sum_legs, 
+                    round(sum_dist_km, OUTPUT_ROUND_DIST_KM), 
+                    round(avg_dist_km, OUTPUT_ROUND_DIST_KM),
+                    round(mean_speed_km_h, OUTPUT_ROUND_DIST_KM)]
+                writer.writerow(out_row)
+            #print ""
+    csv_file.close()
     return
 
 def print_mean_results(mean_results_by_category, key_print_order=None):
@@ -581,11 +610,6 @@ def calc_print_mean_results_agg_by_mode_agency(
     #import pdb
     #pdb.set_trace()
 
-    #print "Further info by mode, agency, route:"
-    #for graph_name in graph_names:
-    #    print "*For graph %s:*" % graph_name
-    #    calc_print_trip_info_by_mode_agency_route(
-    #        trip_results_by_graph[graph_name])
     return
 
 def get_results_in_dep_time_range(trip_results, trip_req_start_dts,
