@@ -8,14 +8,9 @@ import copy
 
 import geom_utils
 import time_utils
+import otp_config
 
 DEFAULT_LONGEST_WALK_LEN_KM = 1.2
-OTP_MODES = ['WALK', 'BUS', 'TRAM', 'SUBWAY']
-OTP_WALK_MODE = 'WALK'
-OTP_NON_WALK_MODES = filter(lambda x: x != OTP_WALK_MODE, OTP_MODES)
-
-# Numbers of decimal places to round various outputs to.
-OUTPUT_ROUND_DIST_KM = 3
 
 ########################
 ## Analysis and Printing
@@ -47,7 +42,7 @@ def print_single_trip_stats(origin_lon_lat, dest_lon_lat, trip_req_start_dt,
     walk_pct = time_utils.get_td_pct(walk_td, total_trip_td)
     transit_pct = time_utils.get_td_pct(transit_td, total_trip_td)
 
-    dist_travelled = ti.get_dist_travelled()
+    dist_travelled_km = ti.get_dist_travelled_km()
     trip_speed_along_route = ti.get_trip_speed_along_route(trip_req_start_dt)
 
     dist_direct = geom_utils.haversine(origin_lon_lat[0], origin_lon_lat[1],
@@ -65,7 +60,8 @@ def print_single_trip_stats(origin_lon_lat, dest_lon_lat, trip_req_start_dt,
     print "  %s (%.2f%%) on transit vehicles (%d transfers)" \
         % (transit_td, transit_pct, ti.json['transfers'])
     print "Total trip distance (as crow flies): %.2fm." % dist_direct
-    print "Total trip distance (travelled): %.2fm." % dist_travelled
+    print "Total trip distance (travelled): %.2fm." \
+        % dist_travelled_km * 1000.0
     print "(Trip directness ratio:- %.2f)" % (dist_direct / dist_travelled)
     print "Trip speed (along route, inc. init wait): %.2fkm/h." \
         % trip_speed_along_route
@@ -109,7 +105,7 @@ def calc_mean_tfer_waits(trip_itins):
 def calc_mean_init_waits_by_mode(trip_itins, trip_req_start_dts):
     sum_modal_init_waits = {}
     cnt_modal_init_waits = {}
-    for mode in OTP_NON_WALK_MODES:
+    for mode in otp_config.OTP_NON_WALK_MODES:
         sum_modal_init_waits[mode] = timedelta(0)
         cnt_modal_init_waits[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
@@ -121,24 +117,33 @@ def calc_mean_init_waits_by_mode(trip_itins, trip_req_start_dts):
             sum_modal_init_waits[first_non_walk_mode] += trip_init_wait
             cnt_modal_init_waits[first_non_walk_mode] += 1
     mean_modal_init_waits = {}
-    for mode in OTP_NON_WALK_MODES:
+    for mode in otp_config.OTP_NON_WALK_MODES:
         total_sec = time_utils.get_total_sec(sum_modal_init_waits[mode])
         mean_sec = total_sec / float(cnt_modal_init_waits[mode])
         mean_modal_init_waits[mode] = timedelta(seconds=mean_sec)
     return mean_modal_init_waits, cnt_modal_init_waits
 
-def calc_mean_walk_dist(trip_itins):
-    return calc_mean_basic_itin_attr(trip_itins, 'walkDistance')
+def calc_mean_walk_dist_km(trip_itins):
+    return calc_mean_basic_itin_attr(trip_itins, 'walkDistance') / 1000.0
 
-def calc_mean_dist_travelled(trip_itins):
+def calc_mean_dist_travelled_km(trip_itins):
     sum_iter = itertools.imap(
         lambda ti: ti.get_dist_travelled(), trip_itins.itervalues())
-    sum_dist = sum(sum_iter)
-    mean_dist_travelled = sum_dist / float(len(trip_itins))
+    sum_dist_km = sum(sum_iter) / 1000.0
+    mean_dist_travelled = sum_dist_km / float(len(trip_itins))
     return mean_dist_travelled
 
 def calc_mean_transfers(trip_itins):
-    return calc_mean_basic_itin_attr(trip_itins, 'transfers')
+    # Can't use the standard mean-calculating algorithm here :- since OTP
+    # returns a '-1' to distinguish pure-walking trips, from trips that have
+    # only one transfer. We want to use zero for pure-walk trips for this mean
+    # calculation, so adjust.
+    tfer_vals = itertools.imap(
+        lambda ti: ti.json['transfers'], trip_itins.itervalues())
+    tfer_vals_adjust = itertools.imap(
+        lambda tval: tval if tval >= 0 else 0, tfer_vals)
+    mean = sum(tfer_vals_adjust) / float(len(trip_itins))
+    return mean
 
 def calc_mean_direct_speed(trip_itins, trips_by_id, trip_req_start_dts):
     sum_val = sum(itertools.imap(
@@ -150,7 +155,7 @@ def calc_mean_direct_speed(trip_itins, trips_by_id, trip_req_start_dts):
 
 def calc_num_trips_using_modes(trip_itins):
     modes_used_in_trip_counts = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         modes_used_in_trip_counts[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         modes_used = trip_itin.get_set_of_modes_used()
@@ -160,7 +165,7 @@ def calc_num_trips_using_modes(trip_itins):
 
 def calc_total_legs_by_mode(trip_itins):
     num_legs_of_modes = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         num_legs_of_modes[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         mode_legs = trip_itin.get_mode_sequence()
@@ -172,7 +177,7 @@ def calc_sum_modal_distances(trip_itins):
     """Calculate the sum of OTP's reported in-vehicle travel distances,
     per-mode, over all trips."""
     sum_modal_distances = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         sum_modal_distances[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         trip_modal_dists = trip_itin.get_dist_m_by_mode()
@@ -184,7 +189,7 @@ def calc_mean_modal_distances_per_all_trips(sum_modal_distances, n_trips_total):
     """Calculate the mean time, per-mode, over _all_ trips:- not just
     the ones where that mode was used."""
     means_modal_distances = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         means_modal_distances[mode] = sum_modal_distances[mode] / \
             n_trips_total
     return means_modal_distances
@@ -194,7 +199,7 @@ def calc_mean_modal_distances_per_leg_used(sum_modal_distances,
     """Calculate the mean distance travelled, per-mode, over legs travelled on
     each mode."""
     means_modal_distances = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         means_modal_distances[mode] = sum_modal_distances[mode] / \
             n_legs_per_mode[mode]
     return means_modal_distances
@@ -203,7 +208,7 @@ def calc_sum_modal_times(trip_itins):
     """Calculate the sum of in-vehicle travel time, per-mode, over all
     trips."""
     sums_modal_times = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         sums_modal_times[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
         trip_modal_times = trip_itin.get_time_sec_by_mode()
@@ -215,7 +220,7 @@ def calc_mean_modal_times_per_all_trips(sums_modal_times, n_trips_total):
     """Calculate the mean time spent, per-mode, over _all_ trips:- not just the ones
     where that mode was used."""
     means_modal_times = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         mean_time_s = sums_modal_times[mode] / \
             n_trips_total
         means_modal_times[mode] = timedelta(seconds=mean_time_s)
@@ -224,7 +229,7 @@ def calc_mean_modal_times_per_all_trips(sums_modal_times, n_trips_total):
 def calc_mean_modal_times_per_leg_used(sums_modal_times, n_legs_per_mode):
     """Calculate the mean time spent, per-mode, over legs using that mode."""
     means_modal_times = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         mean_time_s = sums_modal_times[mode] / \
             n_trips_total
         means_modal_times[mode] = timedelta(seconds=mean_time_s)
@@ -233,7 +238,7 @@ def calc_mean_modal_times_per_leg_used(sums_modal_times, n_legs_per_mode):
 def calc_mean_modal_speeds(trip_itins):
     sums_modal_speeds = {}
     n_modal_speeds = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         sums_modal_speeds[mode] = 0
         n_modal_speeds[mode] = 0
     for trip_id, trip_itin in trip_itins.iteritems():
@@ -247,30 +252,85 @@ def calc_mean_modal_speeds(trip_itins):
                 sums_modal_speeds[mode] += speed_km_h
                 n_modal_speeds[mode] += 1
             else:
-                print "Warning for trip %s: for mode %s: dist = %.2fm, "\
-                    "time = %.2fs (inf speed)" % (trip_id, mode, dist, time_s)
-                print "Not including this in the average."
+                #print "Warning for trip %s: for mode %s: dist = %.2fm, "\
+                #    "time = %.2fs (inf speed)" % (trip_id, mode, dist, time_s)
+                #print "Not including this in the average."
+                pass
     means_modal_speeds = {}
-    for mode in OTP_MODES:
+    for mode in otp_config.OTP_MODES:
         mean_spd_km_h = sums_modal_speeds[mode] / \
             float(n_modal_speeds[mode])
         means_modal_speeds[mode] = mean_spd_km_h
     return means_modal_speeds
 
+TRIP_MEAN_HDRS = ['n trips', 'total time', 'init wait', 
+    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
+    'transfers']
+
+TRIP_MEAN_HDRS_OUTPUT = ['n trips', 'total time (min)', 'init wait (min)', 
+    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
+    'transfers']
+
+# Numbers of decimal places to round various outputs to.
+OUTPUT_ROUND_DIST_KM = 3
+OUTPUT_ROUND_SPEED_KPH = 2
+OUTPUT_ROUND_TRANSFERS = 1
+OUTPUT_ROUND_TIME_MIN = 2
+
 def calc_means_of_tripset(trip_results, trips_by_id, trip_req_start_dts):
     means = {}
-    means['n_trips'] = len(trip_results)
-    means['total_time'] = \
+    means['n trips'] = len(trip_results)
+    means['total time'] = \
         calc_mean_total_time(trip_results, trip_req_start_dts)
-    means['init_wait'] = \
+    means['init wait'] = \
         calc_mean_init_waits(trip_results, trip_req_start_dts)
-    means['direct_speed'] = \
+    means['direct speed (kph)'] = \
         calc_mean_direct_speed(trip_results, trips_by_id,
             trip_req_start_dts)
-    means['dist_travelled'] = calc_mean_dist_travelled(trip_results)
-    means['walk_dist'] = calc_mean_walk_dist(trip_results)
+    means['dist travelled (km)'] = calc_mean_dist_travelled_km(trip_results)
+    means['walk dist (km)'] = calc_mean_walk_dist_km(trip_results) 
     means['transfers'] = calc_mean_transfers(trip_results)
     return means
+
+def order_and_format_means_for_output(means_dict):
+    means_ordered = [means_dict[TRIP_MEAN_HDRS[ii]] for ii in \
+        range(len(TRIP_MEAN_HDRS))]
+    means_ordered[TRIP_MEAN_HDRS.index('total time')] = \
+        round(time_utils.get_total_mins(means_dict['total time']),
+            OUTPUT_ROUND_TIME_MIN)
+    means_ordered[TRIP_MEAN_HDRS.index('init wait')] = \
+        round(time_utils.get_total_mins(means_dict['init wait']),
+            OUTPUT_ROUND_TIME_MIN)
+    means_ordered[TRIP_MEAN_HDRS.index('direct speed (kph)')] = \
+        round(means_dict['direct speed (kph)'], OUTPUT_ROUND_SPEED_KPH)
+    means_ordered[TRIP_MEAN_HDRS.index('dist travelled (km)')] = \
+        round(means_dict['dist travelled (km)'], OUTPUT_ROUND_DIST_KM)
+    means_ordered[TRIP_MEAN_HDRS.index('walk dist (km)')] = \
+        round(means_dict['walk dist (km)'], OUTPUT_ROUND_DIST_KM)
+    means_ordered[TRIP_MEAN_HDRS.index('transfers')] = \
+        round(means_dict['transfers'], OUTPUT_ROUND_TRANSFERS)
+    return means_ordered
+
+def print_mean_results(mean_results_by_category, key_print_order=None):
+    if key_print_order:
+        keys = key_print_order
+    else:
+        keys = mean_results_by_category.keys()
+        
+    for key in keys:
+        means = mean_results_by_category[key]
+        print "  '%s': %d trips, mean trip time %s, mean dist travelled "\
+            "%.2fkm, direct speed %.2f km/h, "\
+            "walk dist %.2fm, # of transfers %.1f" % \
+             (key,
+              means['n trips'],
+              means['total time'],
+              means['dist travelled (km)'],
+              means['direct speed (kph)'],
+              means['walk dist (km)'] * 1000.0,
+              means['transfers'])
+    print ""
+    return
 
 def get_trip_ids_with_walk_leg_gr_than_dist_km(trip_results, dist_km):
     trip_ids_match_criteria = []
@@ -282,9 +342,21 @@ def get_trip_ids_with_walk_leg_gr_than_dist_km(trip_results, dist_km):
             #    "was %fm.)" % (trip_id, longest_walk_m)
     return trip_ids_match_criteria
 
+def get_trip_ids_with_total_time_gr_than(trip_results, trip_req_start_dts,
+        comp_td):
+    trip_ids_match_criteria = []
+    for trip_id, trip_result in trip_results.iteritems():
+        trip_req_start_dt = trip_req_start_dts[trip_id]
+        trip_total_time = trip_result.get_total_trip_td(trip_req_start_dt)
+        if trip_total_time > comp_td:
+            trip_ids_match_criteria.append(trip_id)
+            #print "(trip %s matches since it's total time "\
+            #    "was %s.)" % (trip_id, trip_total_time)
+    return trip_ids_match_criteria
+
 def categorise_trip_ids_by_first_non_walk_mode(trip_itins):
     trips_by_first_mode = {}
-    for mode in OTP_NON_WALK_MODES:
+    for mode in otp_config.OTP_NON_WALK_MODES:
         trips_by_first_mode[mode] = {}
     for trip_id, trip_itin in trip_itins.iteritems():
         first_non_walk_mode = trip_itin.get_first_non_walk_mode()
@@ -304,17 +376,29 @@ def categorise_trips_by_agencies_used(trip_itins):
         trips_by_agencies[agencies][trip_id] = trip_itin
     return trips_by_agencies
 
+def categorise_trip_results_by_od_sla(trip_itins, trips_by_id):
+    trips_by_od_sla = {}
+    for trip_id, trip_itin in trip_itins.iteritems():
+        trip = trips_by_id[trip_id]
+        o_sla, d_sla = trip[3], trip[4]
+        if o_sla not in trips_by_od_sla:
+            trips_by_od_sla[o_sla] = {}
+        if d_sla not in trips_by_od_sla[o_sla]:
+            trips_by_od_sla[o_sla][d_sla] = {}
+        trips_by_od_sla[o_sla][d_sla][trip_id] = trip_itin
+    return trips_by_od_sla
+
 def categorise_trip_ids_by_mode_agency_route(trip_itins):
     trips_by_mar = {}
     trips_by_mar_legs = {}
-    for mode in OTP_NON_WALK_MODES:
+    for mode in otp_config.OTP_NON_WALK_MODES:
         trips_by_mar[mode] = {}
         trips_by_mar_legs[mode] = {}
     for trip_id, trip_itin in trip_itins.iteritems():
         legs = trip_itin.json['legs']
         for leg_i, leg in enumerate(legs):
             mode = leg['mode']
-            if mode == OTP_WALK_MODE: continue
+            if mode == otp_config.OTP_WALK_MODE: continue
             a_name = leg['agencyName']
             r_id = leg['routeId']
             r_s_name = leg['routeShortName']
@@ -335,13 +419,14 @@ def categorise_trip_ids_by_mode_agency_route(trip_itins):
                 trips_by_mar_legs[mode][a_name][r_tup][trip_id] = [leg_i]
     return trips_by_mar, trips_by_mar_legs
 
-def calc_print_trip_info_by_mode_agency_route(trip_itins, output_fname):
+def calc_save_trip_info_by_mode_agency_route(trip_itins, trip_req_start_dts, output_fname):
+
     trips_by_mar, trips_by_mar_legs = categorise_trip_ids_by_mode_agency_route(
         trip_itins)
     
     TRIP_INFO_BY_ROUTE_HEADERS = ['Mode', 'Agency', 'R ID', 'R S name', 
-        'R L name', 'n trips', 'n legs', 'tot dist (km)', 
-        'mean dist/leg (km)', 'mean speed (km/h)']
+        'R L name', 'n trips', 'n legs', 'tot dist (km)', 'tot wait (min)',
+        'mean dist/leg (km)', 'mean speed (km/h)', 'mean wait (min)']
 
     if sys.version_info >= (3,0,0):
         csv_file = open(output_fname, 'w', newline='')
@@ -366,13 +451,19 @@ def calc_print_trip_info_by_mode_agency_route(trip_itins, output_fname):
                 sum_duration = 0
                 sum_speeds_km_h = 0
                 valid_speeds_cnt = 0
+                mean_wait_min = 0
+                sum_wait = timedelta(seconds=0)
                 for trip_id, trip_itin in trip_itins.iteritems():
+                    trip_req_start_dt = trip_req_start_dts[trip_id]
                     leg_is = trips_by_mar_legs[mode][agency][route][trip_id] 
                     sum_legs += len(leg_is)
                     for leg_i in leg_is:
                         leg_dist_m = trip_itin.json['legs'][leg_i]['distance'] 
                         leg_time_s = trip_itin.json['legs'][leg_i]['duration'] \
                             / 1000.0
+                        wait = trip_itin.get_transfer_wait_before_leg(leg_i, 
+                            trip_req_start_dt)
+                        sum_wait += wait
                         sum_dist += leg_dist_m
                         sum_duration += leg_time_s
                         if leg_time_s > 0:
@@ -383,6 +474,8 @@ def calc_print_trip_info_by_mode_agency_route(trip_itins, output_fname):
                 sum_dist_km = sum_dist / 1000.0            
                 avg_dist_km = sum_dist / float(sum_legs) / 1000.0    
                 mean_speed_km_h = sum_speeds_km_h / float(valid_speeds_cnt)
+                sum_wait_min = time_utils.get_total_mins(sum_wait)
+                mean_wait_min = sum_wait_min / float(sum_legs)
                 #print "      Used in %d legs, %d trips, for %.2f km " \
                 #    "(avg %.2f km/leg), at avg speed of %.2f km/hr" \
                 #    % (sum_legs, sum_trips, sum_dist / 1000.0, \
@@ -390,32 +483,13 @@ def calc_print_trip_info_by_mode_agency_route(trip_itins, output_fname):
                 out_row = out_row_base + [r_id, r_short_name, r_l_name, \
                     sum_trips, sum_legs, 
                     round(sum_dist_km, OUTPUT_ROUND_DIST_KM), 
+                    round(sum_wait_min, OUTPUT_ROUND_TIME_MIN), 
                     round(avg_dist_km, OUTPUT_ROUND_DIST_KM),
-                    round(mean_speed_km_h, OUTPUT_ROUND_DIST_KM)]
+                    round(mean_speed_km_h, OUTPUT_ROUND_DIST_KM),
+                    round(mean_wait_min, OUTPUT_ROUND_TIME_MIN)]
                 writer.writerow(out_row)
             #print ""
     csv_file.close()
-    return
-
-def print_mean_results(mean_results_by_category, key_print_order=None):
-    if key_print_order:
-        keys = key_print_order
-    else:
-        keys = mean_results_by_category.keys()
-        
-    for key in keys:
-        means = mean_results_by_category[key]
-        print "  '%s': %d trips, mean trip time %s, mean dist travelled "\
-            "%.2fkm, direct speed %.2f km/h, "\
-            "walk dist %.2fm, # of transfers %.1f" % \
-             (key,
-              means['n_trips'],
-              means['total_time'],
-              means['dist_travelled'] / 1000.0,
-              means['direct_speed'],
-              means['walk_dist'],
-              means['transfers'])
-    print ""
     return
 
 def get_trip_req_start_dts(trips_by_id, trip_req_start_date):
@@ -464,7 +538,7 @@ def calc_means_of_tripset_by_first_non_walk_mode(trip_results_by_graph,
         trips_by_first_non_walk_mode[graph_name] = \
             categorise_trip_ids_by_first_non_walk_mode(trip_results)
         means_by_first_non_walk_mode[graph_name] = {}
-        for mode in OTP_NON_WALK_MODES:
+        for mode in otp_config.OTP_NON_WALK_MODES:
             means_by_first_non_walk_mode[graph_name][mode] = \
                 calc_means_of_tripset(
                     trips_by_first_non_walk_mode[graph_name][mode],
@@ -569,7 +643,7 @@ def calc_print_mean_results_agg_by_mode_agency(
         print "  mode, mean time (all trips), mean dist (all trips), "\
             "# trips used in, # legs, total dist (km), "\
             "mean dist/leg (m), mean in-vehicle speed (km/h)"
-        for mode in OTP_MODES:
+        for mode in otp_config.OTP_MODES:
             mode_time = means_modal_times[graph_name][mode]
             mode_dist = means_modal_dists[graph_name][mode]
             mode_in_trip_cnt = sum_modes_in_trips[graph_name][mode]
@@ -585,11 +659,11 @@ def calc_print_mean_results_agg_by_mode_agency(
 
         print "\n  mean init waits, total trip times, trip overall speeds, "\
             "by first non-walk mode:"
-        for mode in OTP_NON_WALK_MODES:
+        for mode in otp_config.OTP_NON_WALK_MODES:
             print "    %s: %s, %s, %.2f km/h (%d trips)" % (mode, \
                 means_init_waits_by_mode[graph_name][mode],
-                means_by_first_non_walk_mode[graph_name][mode]['total_time'],
-                means_by_first_non_walk_mode[graph_name][mode]['direct_speed'],
+                means_by_first_non_walk_mode[graph_name][mode]['total time'],
+                means_by_first_non_walk_mode[graph_name][mode]['direct speed (kph)'],
                 counts_init_waits_by_mode[graph_name][mode])
         print ""
 
@@ -597,15 +671,15 @@ def calc_print_mean_results_agg_by_mode_agency(
             "by agencies used (sorted by speed):"
         agency_tups_and_means_sorted_by_spd = sorted(
             means_by_agencies_used[graph_name].iteritems(), 
-            key = lambda x: x[1]['direct_speed'])
+            key = lambda x: x[1]['direct speed (kph)'])
         for agency_tuple, means in \
                 reversed(agency_tups_and_means_sorted_by_spd):
             print "    %s: %s, %s, %.2f km/h (%d trips)" \
                 % (agency_tuple, \
-                   means['init_wait'],
-                   means['total_time'],
-                   means['direct_speed'],
-                   means['n_trips'])
+                   means['init wait'],
+                   means['total time'],
+                   means['direct speed (kph)'],
+                   means['n trips'])
         print ""
     #import pdb
     #pdb.set_trace()
@@ -622,6 +696,37 @@ def get_results_in_dep_time_range(trip_results, trip_req_start_dts,
                 and trip_start_dt.time() < dep_time_info[2]:
             trip_results_subset[trip_id] = trip_result
     return trip_results_subset
+
+def calc_save_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts,
+        output_fname):
+
+    tripsets_by_od_sla = categorise_trip_results_by_od_sla(trip_itins,
+        trips_by_id)
+    means_by_od_sla = {}
+    for o_sla, tripsets_by_dest_sla in tripsets_by_od_sla.iteritems():
+        means_by_od_sla[o_sla] = {}
+        for d_sla, trip_itins in tripsets_by_dest_sla.iteritems():
+            means_by_od_sla[o_sla][d_sla] = calc_means_of_tripset(
+                trip_itins, trips_by_id, trip_req_start_dts)
+    
+    if sys.version_info >= (3,0,0):
+        csv_file = open(output_fname, 'w', newline='')
+    else:
+        csv_file = open(output_fname, 'wb')
+
+    TRIP_MEANS_BY_OD_HDRS = ['Origin SLA', 'Dest SLA'] \
+        + TRIP_MEAN_HDRS_OUTPUT
+    writer = csv.writer(csv_file, delimiter=',')
+    writer.writerow(TRIP_MEANS_BY_OD_HDRS)
+
+    for o_sla, means_by_d_sla in means_by_od_sla.iteritems():
+        for d_sla, means in means_by_d_sla.iteritems():
+            out_row_base = [o_sla, d_sla]
+            means_ordered = order_and_format_means_for_output(means)
+            out_row = out_row_base + means_ordered
+            writer.writerow(out_row)
+    csv_file.close()
+    return
 
 def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
         trips_by_id, trip_req_start_dts,

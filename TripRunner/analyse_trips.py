@@ -1,9 +1,8 @@
 #!/usr/bin/env python2
 
 import os.path
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from optparse import OptionParser
-from datetime import time
 
 import Trips_Generator.trips_io
 import trip_itins_io
@@ -75,17 +74,31 @@ def main():
 
     # Now apply various filters to the trip-set ...
     def_desc = "all trips"
-    filtered_desc = "filtered to remove long walk legs"
     longest_walk_len_km = trip_analysis.DEFAULT_LONGEST_WALK_LEN_KM
+    longest_trip_time = timedelta(hours=4)
+    filtered_desc = "filtered to remove trips with > %.1fkm walk legs and " \
+        "those with calc time > %s" \
+        % (longest_walk_len_km, longest_trip_time)
     trip_results_by_graph_filtered = {}
     for graph_name in trip_results_by_graph.keys():
         trip_results = trip_results_by_graph[graph_name]
+        trip_ids_to_exclude = set()
+        # Filter out trips that involved a very long walk:-
+        # OTP still sometimes returns these where there is no alternative 
+        # option, even if well above your specified max walk distance.
         trip_ids_long_walk = \
             trip_analysis.get_trip_ids_with_walk_leg_gr_than_dist_km(
                 trip_results, longest_walk_len_km)
+        trip_ids_to_exclude.update(trip_ids_long_walk)
+        # Filter out trips that took a very long time - e.g. trips starting
+        # on a Sunday where there is no service till the next day.
+        trip_ids_long_time = \
+            trip_analysis.get_trip_ids_with_total_time_gr_than(
+                trip_results, trip_req_start_dts, longest_trip_time)
+        trip_ids_to_exclude.update(trip_ids_long_time)
         trip_results_by_graph_filtered[graph_name] = \
             trip_analysis.get_trips_subset_by_ids_to_exclude(trip_results, 
-                trip_ids_long_walk)
+                trip_ids_to_exclude)
 
     # Initially print high-level summaries
     trip_analysis.calc_print_mean_results_overall_summaries(
@@ -142,8 +155,18 @@ def main():
         output_fname = os.path.join(output_base_dir, 
             "route_totals-%s.csv" % graph_name)
         print "For graph %s: to %s" % (graph_name, output_fname)
-        trip_analysis.calc_print_trip_info_by_mode_agency_route(
-            trip_results_by_graph_filtered[graph_name], output_fname)
+        trip_analysis.calc_save_trip_info_by_mode_agency_route(
+            trip_results_by_graph_filtered[graph_name],
+            trip_req_start_dts, output_fname)
+
+    print "Saving info by trip O-D SLA to files:"
+    for graph_name in trip_results_by_graph.keys():
+        output_fname = os.path.join(output_base_dir, 
+            "totals-by-SLAs-%s.csv" % graph_name)
+        print "For graph %s: to %s" % (graph_name, output_fname)
+        trip_analysis.calc_save_trip_info_by_OD_SLA(
+            trip_results_by_graph_filtered[graph_name], trips_by_id,
+            trip_req_start_dts, output_fname)
 
     if comp_shp_graphs:
         graph_name_1, graph_name_2 = comp_shp_graphs

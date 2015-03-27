@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import json
 
+import otp_config
 import time_utils
 
 class TripItinerary:
@@ -30,6 +31,36 @@ class TripItinerary:
 
     def get_init_wait_td(self, trip_req_start_dt):
         return self.get_start_dt() - trip_req_start_dt
+
+    def get_transfer_wait_before_leg(self, leg_i, trip_req_start_dt):
+        if leg_i >= len(self.json['legs']):
+            raise ValueError("value of leg_i passed was too high.")
+        if leg_i == 0:
+            return self.get_init_wait_td(trip_req_start_dt)
+        else:
+            wait_before = self.get_wait_before_leg(leg_i, trip_req_start_dt)
+            legs = self.json['legs']
+            proc_leg_i = leg_i - 1
+            while proc_leg_i >= 0 and legs[proc_leg_i]['mode'] == \
+                    otp_config.OTP_WALK_MODE:
+                wait_before += self.get_wait_before_leg(proc_leg_i,
+                    trip_req_start_dt)
+                proc_leg_i -= 1
+        return wait_before
+
+    def get_wait_before_leg(self, leg_i, trip_req_start_dt):
+        if leg_i >= len(self.json['legs']):
+            raise ValueError("value of leg_i passed was too high.")
+        if leg_i == 0:
+            return self.get_init_wait_td(trip_req_start_dt)
+        else:
+            prev_leg = self.json['legs'][leg_i - 1]
+            prev_leg_end = datetime.fromtimestamp(
+                prev_leg['endTime'] / 1000.0)
+            curr_leg = self.json['legs'][leg_i]    
+            curr_leg_start = datetime.fromtimestamp(
+                curr_leg['startTime'] / 1000.0)
+            return curr_leg_start - prev_leg_end    
 
     def get_tfer_wait_td(self):
         """I am calling this 'transfer wait' since OTP records in the
@@ -67,7 +98,7 @@ class TripItinerary:
     def get_longest_walk_leg_dist_m(self):
         longest_walk_leg_m = 0.0
         for leg in self.json['legs']:
-            if leg['mode'] == 'WALK':
+            if leg['mode'] == otp_config.OTP_WALK_MODE:
                 walk_len = leg['distance']
                 if walk_len > longest_walk_leg_m:
                     longest_walk_leg_m = walk_len
@@ -93,9 +124,9 @@ class TripItinerary:
         WALK. If the trip only contained a single walk leg, returns None."""
         first_non_walk_mode = None
         if len(self.json['legs']) > 1 \
-                or self.json['legs'][0]['mode'] != 'WALK':
+                or self.json['legs'][0]['mode'] != otp_config.OTP_WALK_MODE:
             for leg in self.json['legs']:
-                if leg['mode'] != 'WALK':
+                if leg['mode'] != otp_config.OTP_WALK_MODE:
                     first_non_walk_mode = leg['mode']
                     break
             assert first_non_walk_mode
@@ -116,7 +147,7 @@ class TripItinerary:
         agencies_set = set()
         for leg in self.json['legs']:
             mode = leg['mode']
-            if mode == 'WALK': continue
+            if mode == otp_config.OTP_WALK_MODE: continue
             agency = leg['agencyName']
             agencies_set.add(agency)
         return agencies_set
