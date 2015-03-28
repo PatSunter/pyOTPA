@@ -10,8 +10,6 @@ import geom_utils
 import time_utils
 import otp_config
 
-DEFAULT_LONGEST_WALK_LEN_KM = 1.2
-
 ########################
 ## Analysis and Printing
 
@@ -319,6 +317,7 @@ def print_mean_results(mean_results_by_category, key_print_order=None):
         
     for key in keys:
         means = mean_results_by_category[key]
+        if not means: continue
         print "  '%s': %d trips, mean trip time %s, mean dist travelled "\
             "%.2fkm, direct speed %.2f km/h, "\
             "walk dist %.2fm, # of transfers %.1f" % \
@@ -331,28 +330,6 @@ def print_mean_results(mean_results_by_category, key_print_order=None):
               means['transfers'])
     print ""
     return
-
-def get_trip_ids_with_walk_leg_gr_than_dist_km(trip_results, dist_km):
-    trip_ids_match_criteria = []
-    for trip_id, trip_result in trip_results.iteritems():
-        longest_walk_m = trip_result.get_longest_walk_leg_dist_m()
-        if longest_walk_m / 1000.0 > dist_km:
-            trip_ids_match_criteria.append(trip_id)
-            #print "(trip %s matches since it's longest walk leg "\
-            #    "was %fm.)" % (trip_id, longest_walk_m)
-    return trip_ids_match_criteria
-
-def get_trip_ids_with_total_time_gr_than(trip_results, trip_req_start_dts,
-        comp_td):
-    trip_ids_match_criteria = []
-    for trip_id, trip_result in trip_results.iteritems():
-        trip_req_start_dt = trip_req_start_dts[trip_id]
-        trip_total_time = trip_result.get_total_trip_td(trip_req_start_dt)
-        if trip_total_time > comp_td:
-            trip_ids_match_criteria.append(trip_id)
-            #print "(trip %s matches since it's total time "\
-            #    "was %s.)" % (trip_id, trip_total_time)
-    return trip_ids_match_criteria
 
 def categorise_trip_ids_by_first_non_walk_mode(trip_itins):
     trips_by_first_mode = {}
@@ -552,8 +529,11 @@ def calc_print_mean_results_overall_summaries(
     means = {}
     for graph_name in graph_names:
         trip_results = trip_results_by_graph[graph_name]
-        means[graph_name] = calc_means_of_tripset(
-            trip_results, trips_by_id, trip_req_start_dts)
+        if trip_results:
+            means[graph_name] = calc_means_of_tripset(
+                trip_results, trips_by_id, trip_req_start_dts)
+        else:
+            means[graph_name] = None
 
     if description:
         extra_string = "(%s)" % description

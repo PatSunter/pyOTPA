@@ -3,11 +3,13 @@
 import os.path
 from datetime import date, datetime, time, timedelta
 from optparse import OptionParser
+from osgeo import ogr
 
 import Trips_Generator.trips_io
 import trip_itins_io
 import otp_config
 import trip_analysis
+import trip_filters
 
 def main():
     parser = OptionParser()
@@ -74,7 +76,7 @@ def main():
 
     # Now apply various filters to the trip-set ...
     def_desc = "all trips"
-    longest_walk_len_km = trip_analysis.DEFAULT_LONGEST_WALK_LEN_KM
+    longest_walk_len_km = trip_filters.DEFAULT_LONGEST_WALK_LEN_KM
     longest_trip_time = timedelta(hours=4)
     filtered_desc = "filtered to remove trips with > %.1fkm walk legs and " \
         "those with calc time > %s" \
@@ -87,18 +89,49 @@ def main():
         # OTP still sometimes returns these where there is no alternative 
         # option, even if well above your specified max walk distance.
         trip_ids_long_walk = \
-            trip_analysis.get_trip_ids_with_walk_leg_gr_than_dist_km(
+            trip_filters.get_trip_ids_with_walk_leg_gr_than_dist_km(
                 trip_results, longest_walk_len_km)
         trip_ids_to_exclude.update(trip_ids_long_walk)
         # Filter out trips that took a very long time - e.g. trips starting
         # on a Sunday where there is no service till the next day.
         trip_ids_long_time = \
-            trip_analysis.get_trip_ids_with_total_time_gr_than(
+            trip_filters.get_trip_ids_with_total_time_gr_than(
                 trip_results, trip_req_start_dts, longest_trip_time)
         trip_ids_to_exclude.update(trip_ids_long_time)
         trip_results_by_graph_filtered[graph_name] = \
             trip_analysis.get_trips_subset_by_ids_to_exclude(trip_results, 
                 trip_ids_to_exclude)
+
+    # Also create a separate filtered list of trips within a target distance
+    # from the routes.
+    print "Loading improved network shapefiles for creating "\
+        "subset of trip results near these networks' stops and "\
+        "calculating trips subset near these..."
+    buff_dist_m = 500
+    near_upgraded_routes_desc = "Trips starting and finishing within %dm "\
+        "of the upgraded networks' stops (Trains, trams, smartbuses, and selected "\
+        "regular buses)" % buff_dist_m
+    train_stops_shp_fname = "/Users/pds_phd/Dropbox/PhD-TechnicalProjectWork/OSSTIP_PTUA/Melbourne_GIS_NetworkDataWork/train_upgrades_extensions/output/melb-train-gtfs-2014_06-topology-stops-combined.shp"
+    tram_stops_shp_fname = "/Users/pds_phd/Dropbox/PhD-TechnicalProjectWork/OSSTIP_PTUA/Melbourne_GIS_NetworkDataWork/tram_upgrades_extensions/output/melb-tram-gtfs-2014_06-topology-stops-combined_auto_600.shp"
+    smartbus_stops_shp_fname = "/Users/pds_phd/Dropbox/PhD-TechnicalProjectWork/OSSTIP_PTUA/Melbourne_GIS_NetworkDataWork/bus_upgrades/output/metro-smartbus/melb-bus-gtfs-2014_06-metro-smartbus-topology-stops.shp"
+    upg_bus_stops_shp_fname = "/Users/pds_phd/Dropbox/PhD-TechnicalProjectWork/OSSTIP_PTUA/Melbourne_GIS_NetworkDataWork/bus_upgrades/output/metro-upgrade_to_smartbus-v2-20141115/melb-bus-gtfs-2014_06-metro-upgrade_to_smartbus-v2-20141115-topology-stops.shp"
+    train_stops_shp = ogr.Open(train_stops_shp_fname)
+    tram_stops_shp = ogr.Open(tram_stops_shp_fname)
+    smartbus_stops_shp = ogr.Open(smartbus_stops_shp_fname)
+    upg_bus_stops_shp = ogr.Open(upg_bus_stops_shp_fname)
+    imp_network_stop_lyrs = map(lambda x: x.GetLayer(0),
+        [train_stops_shp])#, tram_stops_shp, smartbus_stops_shp, upg_bus_stops_shp])
+    trip_results_by_graph_near_imp_network_stops = {}
+    for graph_name in trip_results_by_graph.keys():
+        trip_results = trip_results_by_graph[graph_name] 
+        trip_result_ids_iter = trip_results.iterkeys()
+        trip_ids_near_imp_route_stops = \
+            trip_filters.get_trip_ids_near_network_stops(trips_by_id,
+                imp_network_stop_lyrs, buff_dist_m, trip_result_ids_iter)
+        trip_results_by_graph_near_imp_network_stops[graph_name] = \
+            trip_analysis.get_trips_subset_by_ids(trip_results, 
+                trip_ids_near_imp_route_stops)
+    print "...done."
 
     # Initially print high-level summaries
     trip_analysis.calc_print_mean_results_overall_summaries(
@@ -108,6 +141,12 @@ def main():
     trip_analysis.calc_print_mean_results_overall_summaries(
         trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
         trips_by_id, trip_req_start_dts, description=filtered_desc)
+
+    trip_analysis.calc_print_mean_results_overall_summaries(
+        trip_results_by_graph.keys(),
+        trip_results_by_graph_near_imp_network_stops,
+        trips_by_id, trip_req_start_dts,
+        description=near_upgraded_routes_desc)
 
     # Print further, more advanced analysis just on the filtered trips for the
     # moment.
@@ -178,6 +217,12 @@ def main():
             trip_results_by_graph[graph_name_1], 
             trip_results_by_graph[graph_name_2],
             comp_shpfilename)
+
+    # cleanup
+    train_stops_shp.Destroy()
+    tram_stops_shp.Destroy()
+    smartbus_stops_shp.Destroy()
+    upg_bus_stops_shp.Destroy()
     return
 
 if __name__ == "__main__":
