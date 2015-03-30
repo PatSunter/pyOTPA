@@ -1,5 +1,17 @@
-OTP-Routing-Tools
-=================
+pyOTPA (Python OpenTripPlanner Analysis tools)
+==============================================
+
+A set of tools for assisting with network analysis using OpenTripPlanner :-
+tasks such as:-
+ * Scripts to help generate OTP Graphs from a set of GTFS files
+   (Especially if you want to create many similar graphs with slightly
+   different timetables).
+ * Scripts to help co-ordinate a set of batch OTP runs, and/or running trips
+   on a remote server, and saving details
+ * Scripts to then analyse these results in various ways.  
+
+Older notes on some particular scripts
+======================================
 
 TrainStations-OD-Matrix:
 * Assumes you want to use OTP to calculate routes between all stations in a city's
