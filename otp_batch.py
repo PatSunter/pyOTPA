@@ -6,7 +6,6 @@ import itertools
 
 import makepaths
 import taz_files
-import make_od_matrix
 import od_matrix_analysis
 
 TAG_GRAPH = "REPLACE_GRAPH_NAME"
