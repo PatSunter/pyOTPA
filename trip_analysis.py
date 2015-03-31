@@ -72,9 +72,12 @@ def calc_mean_init_waits_by_mode(trip_itins, trip_req_start_dts):
             cnt_modal_init_waits[first_non_walk_mode] += 1
     mean_modal_init_waits = {}
     for mode in otp_config.OTP_NON_WALK_MODES:
-        total_sec = time_utils.get_total_sec(sum_modal_init_waits[mode])
-        mean_sec = total_sec / float(cnt_modal_init_waits[mode])
-        mean_modal_init_waits[mode] = timedelta(seconds=mean_sec)
+        if cnt_modal_init_waits[mode]:
+            total_sec = time_utils.get_total_sec(sum_modal_init_waits[mode])
+            mean_sec = total_sec / float(cnt_modal_init_waits[mode])
+            mean_modal_init_waits[mode] = timedelta(seconds=mean_sec)
+        else:
+            mean_modal_init_waits[mode] = None
     return mean_modal_init_waits, cnt_modal_init_waits
 
 def calc_mean_walk_dist_km(trip_itins):
@@ -154,8 +157,11 @@ def calc_mean_modal_distances_per_leg_used(sum_modal_distances,
     each mode."""
     means_modal_distances = {}
     for mode in otp_config.OTP_MODES:
-        means_modal_distances[mode] = sum_modal_distances[mode] / \
-            n_legs_per_mode[mode]
+        if n_legs_per_mode[mode]:
+            means_modal_distances[mode] = sum_modal_distances[mode] / \
+                n_legs_per_mode[mode]
+        else:
+            means_modal_distances[mode] = None
     return means_modal_distances
 
 def calc_sum_modal_times(trip_itins):
@@ -212,9 +218,12 @@ def calc_mean_modal_speeds(trip_itins):
                 pass
     means_modal_speeds = {}
     for mode in otp_config.OTP_MODES:
-        mean_spd_km_h = sums_modal_speeds[mode] / \
-            float(n_modal_speeds[mode])
-        means_modal_speeds[mode] = mean_spd_km_h
+        if n_modal_speeds[mode]:
+            mean_spd_km_h = sums_modal_speeds[mode] / \
+                float(n_modal_speeds[mode])
+            means_modal_speeds[mode] = mean_spd_km_h
+        else:
+            means_modal_speeds[mode] = None
     return means_modal_speeds
 
 TRIP_MEAN_HDRS = ['n trips', 'total time', 'init wait', 
@@ -232,6 +241,7 @@ OUTPUT_ROUND_TRANSFERS = 1
 OUTPUT_ROUND_TIME_MIN = 2
 
 def calc_means_of_tripset(trip_results, trips_by_id, trip_req_start_dts):
+    assert len(trip_results) > 0
     means = {}
     means['n trips'] = len(trip_results)
     means['total time'] = \
@@ -478,10 +488,13 @@ def calc_means_of_tripset_by_first_non_walk_mode(trip_results_by_graph,
             categorise_trip_ids_by_first_non_walk_mode(trip_results)
         means_by_first_non_walk_mode[graph_name] = {}
         for mode in otp_config.OTP_NON_WALK_MODES:
-            means_by_first_non_walk_mode[graph_name][mode] = \
-                calc_means_of_tripset(
-                    trips_by_first_non_walk_mode[graph_name][mode],
-                    trips_by_id, trip_req_start_dts)
+            if trips_by_first_non_walk_mode[graph_name][mode]: 
+                means_by_first_non_walk_mode[graph_name][mode] = \
+                    calc_means_of_tripset(
+                        trips_by_first_non_walk_mode[graph_name][mode],
+                        trips_by_id, trip_req_start_dts)
+            else:
+                means_by_first_non_walk_mode[graph_name][mode] = None
     return means_by_first_non_walk_mode
 
 def calc_print_mean_results_overall_summaries(
@@ -593,27 +606,33 @@ def calc_print_mean_results_agg_by_mode_agency(
             "# trips used in, # legs, total dist (km), "\
             "mean dist/leg (m), mean in-vehicle speed (km/h)"
         for mode in otp_config.OTP_MODES:
-            mode_time = means_modal_times[graph_name][mode]
-            mode_dist = means_modal_dists[graph_name][mode]
-            mode_in_trip_cnt = sum_modes_in_trips[graph_name][mode]
             mode_legs_cnt = sum_legs_by_mode[graph_name][mode]
-            mode_sum_dist = sum_modal_dists[graph_name][mode]
-            mode_dist_leg = means_modal_dist_leg[graph_name][mode]
-            mode_speed = means_modal_speeds[graph_name][mode]
-            print "  %s, %s, %.1f m, %d, %d, %.2f km, %.1f m, %.2f," \
-                % (mode, mode_time, mode_dist, mode_in_trip_cnt, \
-                   mode_legs_cnt, mode_sum_dist, mode_dist_leg, mode_speed)
+            if mode_legs_cnt:
+                mode_time = means_modal_times[graph_name][mode]
+                mode_dist = means_modal_dists[graph_name][mode]
+                mode_in_trip_cnt = sum_modes_in_trips[graph_name][mode]
+                mode_sum_dist = sum_modal_dists[graph_name][mode]
+                mode_dist_leg = means_modal_dist_leg[graph_name][mode]
+                mode_speed = means_modal_speeds[graph_name][mode]
+                print "  %s, %s, %.1f m, %d, %d, %.2f km, %.1f m, %.2f," \
+                    % (mode, mode_time, mode_dist, mode_in_trip_cnt, \
+                       mode_legs_cnt, mode_sum_dist, mode_dist_leg, mode_speed)
+            else:
+                print "  %s, None, None, 0, 0, 0 km, None, None," % mode
         print "  initial wait, %s, " % means_init_waits[graph_name]
         print "  transfer wait, %s, " % means_tfer_waits[graph_name]
 
         print "\n  mean init waits, total trip times, trip overall speeds, "\
             "by first non-walk mode:"
         for mode in otp_config.OTP_NON_WALK_MODES:
-            print "    %s: %s, %s, %.2f km/h (%d trips)" % (mode, \
-                means_init_waits_by_mode[graph_name][mode],
-                means_by_first_non_walk_mode[graph_name][mode]['total time'],
-                means_by_first_non_walk_mode[graph_name][mode]['direct speed (kph)'],
-                counts_init_waits_by_mode[graph_name][mode])
+            if counts_init_waits_by_mode[graph_name][mode]: 
+                print "    %s: %s, %s, %.2f km/h (%d trips)" % (mode, \
+                    means_init_waits_by_mode[graph_name][mode],
+                    means_by_first_non_walk_mode[graph_name][mode]['total time'],
+                    means_by_first_non_walk_mode[graph_name][mode]['direct speed (kph)'],
+                    counts_init_waits_by_mode[graph_name][mode])
+            else:
+                print "    %s: None, None, None (0 trips)" % (mode)
         print ""
 
         print "  mean init waits, total trip times, trip overall speeds, "\
@@ -623,12 +642,15 @@ def calc_print_mean_results_agg_by_mode_agency(
             key = lambda x: x[1]['direct speed (kph)'])
         for agency_tuple, means in \
                 reversed(agency_tups_and_means_sorted_by_spd):
-            print "    %s: %s, %s, %.2f km/h (%d trips)" \
-                % (agency_tuple, \
-                   means['init wait'],
-                   means['total time'],
-                   means['direct speed (kph)'],
-                   means['n trips'])
+            if means:
+                print "    %s: %s, %s, %.2f km/h (%d trips)" \
+                    % (agency_tuple, \
+                       means['init wait'],
+                       means['total time'],
+                       means['direct speed (kph)'],
+                       means['n trips'])
+            else:
+                print "    %s: None, None, None (0 trips)" % agency_tuple
         print ""
     #import pdb
     #pdb.set_trace()
