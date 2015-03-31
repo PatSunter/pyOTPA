@@ -46,7 +46,9 @@ class WithinZoneLocGenerator:
         self._randomiser = random.Random(self._random_seed)
         if self.constraint_checkers:
             for cc in self.constraint_checkers:
-                cc.initialise()
+                # Need to tell the constraint checkers the SRS the coordinates
+                # will be generated in here.
+                cc.initialise(zone_polys_srs)
     
     def update_zone(self, zone_name):
         if self._curr_zone == zone_name:

@@ -20,16 +20,17 @@ class LocConstraintChecker:
 
 class PlanningZoneLocConstraintChecker(LocConstraintChecker):
     def __init__(self, pz_shpfilename, allowed_zone_codes,
-            trips_srs, zone_code_field=DEFAULT_ZONE_CODE_FIELD):
+            zone_code_field=DEFAULT_ZONE_CODE_FIELD):
         self.pz_shpfilename = pz_shpfilename
         self.allowed_zone_codes = allowed_zone_codes
         self.zone_code_field = zone_code_field
         self._tform_to_pz_srs = None
-        self._trips_srs = trips_srs
+        self._locations_srs = None
         self._pz_shp = None
         self._region_geom_local = None
     
-    def initialise(self):
+    def initialise(self, locations_srs):
+        self._locations_srs = locations_srs
         pz_fname = os.path.expanduser(self.pz_shpfilename)
         self._pz_shp = ogr.Open(pz_fname, 0)
         if self._pz_shp is None:
@@ -39,7 +40,7 @@ class PlanningZoneLocConstraintChecker(LocConstraintChecker):
         self._pz_lyr = self._pz_shp.GetLayer(0)  
         pz_srs = self._pz_lyr.GetSpatialRef()
         self._tform_to_pz_srs = osr.CoordinateTransformation(
-            self._trips_srs, pz_srs)
+            self._locations_srs, pz_srs)
 
     def update_region(self, region_key, region_geom):
         self._pz_lyr.SetSpatialFilter(None)
@@ -105,16 +106,17 @@ def create_union_buffered_geom_in_region(test_layer, buffer_dist,
     return union_geom
 
 class WithinBufferOfShapeLocConstraintChecker(LocConstraintChecker):
-    def __init__(self, test_shpfilename, buffer_dist, trips_srs):
+    def __init__(self, test_shpfilename, buffer_dist):
         self.test_shpfilename = test_shpfilename
         self._buffer_dist = buffer_dist
         self._tform_to_test_srs = None
-        self._trips_srs = trips_srs
+        self._locations_srs = None
         self._test_geom_in_region = None
         self._test_shp = None
         self._region_buffered_geoms_cache = None
     
-    def initialise(self):
+    def initialise(self, locations_srs):
+        self._locations_srs = locations_srs
         test_fname = os.path.expanduser(self.test_shpfilename)
         self._test_shp = ogr.Open(test_fname, 0)
         if self._test_shp is None:
@@ -125,7 +127,7 @@ class WithinBufferOfShapeLocConstraintChecker(LocConstraintChecker):
         #assert self._test_lyr.GetFeatureCount() == 1
         test_srs = self._test_lyr.GetSpatialRef()
         self._tform_to_test_srs = osr.CoordinateTransformation(
-            self._trips_srs, test_srs)
+            self._locations_srs, test_srs)
         self._region_buffered_geoms_cache = {}
 
     def update_region(self, region_key, region_geom):

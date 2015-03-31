@@ -17,7 +17,7 @@ import pyOTPA.Trips_Generator.LocConstraintChecker as lc_checker
 def main():
     # This number should make sure we get all VISTA trips.
     #N_TRIPS = 130000
-    N_TRIPS = 5
+    N_TRIPS = 20
     RANDOM_ORIGIN_SEED = 5
     RANDOM_DEST_SEED = 10
 
@@ -56,25 +56,21 @@ def main():
     sla_feats_dict = abs_zone_io.create_sla_name_map(sla_lyr)
     ccd_features_dict = abs_zone_io.create_ccd_code_map(ccd_lyr)
 
-    # This determines if we're happy for locations to be generated in the same
-    # SRS as the CCDs. If not, we can use something different.
-    loc_srs = ccd_lyr.GetSpatialRef()
-
     # Try without planning zone constraint checks, for smaller CCDs,
     #  since for multiple trip purposes.
     #origin_constraint_checker_zone = \
     #    lc_checker.PlanningZoneLocConstraintChecker(
-    #        PLANNING_ZONES_SHPFILE, pz_info.RESIDENTIAL_ZONES, loc_srs)
+    #        PLANNING_ZONES_SHPFILE, pz_info.RESIDENTIAL_ZONES)
     #dest_constraint_checker_zone = \
     #    lc_checker.PlanningZoneLocConstraintChecker(
     #        PLANNING_ZONES_SHPFILE, pz_info.RESIDENTIAL_AND_EMPLOYMENT_ZONES,
-    #        loc_srs)
+    #        )
     origin_rd_dist_checker = \
         lc_checker.WithinBufferOfShapeLocConstraintChecker(
-            STREETS_LANES_BUFFER_SHPFILE, BUFFER_DIST, loc_srs)
+            STREETS_LANES_BUFFER_SHPFILE, BUFFER_DIST)
     dest_rd_dist_checker = \
         lc_checker.WithinBufferOfShapeLocConstraintChecker(
-            STREETS_LANES_BUFFER_SHPFILE, BUFFER_DIST, loc_srs)
+            STREETS_LANES_BUFFER_SHPFILE, BUFFER_DIST)
 
     origin_loc_gen = WithinZoneLocGenerator(RANDOM_ORIGIN_SEED,
         ccd_features_dict, 
@@ -87,7 +83,7 @@ def main():
         #[dest_rd_dist_checker, dest_constraint_checker_zone])
         [dest_rd_dist_checker])
 
-    connection = mdb.connect('localhost', 'ptua', 'multimodal', 'vista07')
+    connection = mdb.connect('localhost', USER, PASS, 'vista07')
 
     trips_date_week_start = date(year=2015,month=3,day=2)
 
