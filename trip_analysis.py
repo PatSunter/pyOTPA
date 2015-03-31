@@ -22,14 +22,33 @@ OUTPUT_ROUND_TIME_MIN = 2
 ########################
 ## Analysis and Printing
 
-def get_trip_speed_direct(origin_lon_lat, dest_lon_lat, trip_req_start_dt,
-        trip_itin):
-    dist_direct = geom_utils.haversine(origin_lon_lat[0], origin_lon_lat[1],
-        dest_lon_lat[0], dest_lon_lat[1])
+def calc_trip_direct_dist_km(trip):
+    dist_direct = geom_utils.haversine(
+        trip[Trip.ORIGIN][0], trip[Trip.ORIGIN][1],
+        trip[Trip.DEST][0], trip[Trip.DEST][1])
+    return dist_direct
+
+def calc_mean_dist_direct_km(trip_itins, trips_by_id):
+    dist_iter = itertools.imap(
+        lambda trip_id: calc_trip_direct_dist_km(trips_by_id[trip_id]),
+        trip_itins.iterkeys())
+    sum_dist_km = sum(dist_iter) / 1000.0
+    mean_dist_direct = sum_dist_km / float(len(trip_itins))
+    return mean_dist_direct
+
+def calc_trip_speed_direct(trip, trip_req_start_dt, trip_itin):
+    dist_direct = calc_trip_direct_dist_km(trip)
     total_trip_sec = trip_itin.get_total_trip_sec(trip_req_start_dt)
     trip_speed_direct = (dist_direct / 1000.0) \
         / (total_trip_sec / (60 * 60.0))
     return trip_speed_direct
+
+def calc_mean_dist_travelled_km(trip_itins):
+    sum_iter = itertools.imap(
+        lambda ti: ti.get_dist_travelled(), trip_itins.itervalues())
+    sum_dist_km = sum(sum_iter) / 1000.0
+    mean_dist_travelled = sum_dist_km / float(len(trip_itins))
+    return mean_dist_travelled
 
 def calc_mean_total_time(trip_itins, trip_req_start_dts):
     sum_val = sum(itertools.imap(
@@ -67,13 +86,6 @@ def calc_mean_tfer_waits(trip_itins):
 def calc_mean_walk_dist_km(trip_itins):
     return calc_mean_basic_itin_attr(trip_itins, 'walkDistance') / 1000.0
 
-def calc_mean_dist_travelled_km(trip_itins):
-    sum_iter = itertools.imap(
-        lambda ti: ti.get_dist_travelled(), trip_itins.itervalues())
-    sum_dist_km = sum(sum_iter) / 1000.0
-    mean_dist_travelled = sum_dist_km / float(len(trip_itins))
-    return mean_dist_travelled
-
 def calc_mean_transfers(trip_itins):
     # Can't use the standard mean-calculating algorithm here :- since OTP
     # returns a '-1' to distinguish pure-walking trips, from trips that have
@@ -88,9 +100,11 @@ def calc_mean_transfers(trip_itins):
 
 def calc_mean_direct_speed(trip_itins, trips_by_id, trip_req_start_dts):
     sum_val = sum(itertools.imap(
-        lambda trip_id: get_trip_speed_direct(trips_by_id[trip_id][0],
-            trips_by_id[trip_id][1], trip_req_start_dts[trip_id],
-            trip_itins[trip_id]), trip_itins.iterkeys()))
+        lambda trip_id: calc_trip_speed_direct(
+            trips_by_id[trip_id],
+            trip_req_start_dts[trip_id],
+            trip_itins[trip_id]),
+        trip_itins.iterkeys()))
     mean_spd = sum_val / float(len(trip_itins))
     return mean_spd
 
@@ -218,9 +232,13 @@ def calc_means_of_tripset(trip_results, trips_by_id, trip_req_start_dts):
         calc_mean_total_time(trip_results, trip_req_start_dts)
     means['init wait'] = \
         calc_mean_init_waits(trip_results, trip_req_start_dts)
+    means['tfer wait'] = \
+        calc_mean_tfer_waits(trip_results)
     means['direct speed (kph)'] = \
         calc_mean_direct_speed(trip_results, trips_by_id,
             trip_req_start_dts)
+    means['dist direct (km)'] = calc_mean_dist_direct_km(trip_results,
+        trips_by_id)
     means['dist travelled (km)'] = calc_mean_dist_travelled_km(trip_results)
     means['walk dist (km)'] = calc_mean_walk_dist_km(trip_results) 
     means['transfers'] = calc_mean_transfers(trip_results)
@@ -522,7 +540,8 @@ def calc_save_mean_results_by_first_non_walk_mode(
 
     for graph_name in graph_names:
         output_fname = output_file_base + "-%s.csv" % graph_name
-        print "Saving mean results by agencies (%s) for graph %s: to file %s" \
+        print "Saving mean results by first non-walk mode (%s) for graph "\
+            "%s to file %s" \
             % (description, graph_name, output_fname)
         if not trip_results_by_graph[graph_name]:
             continue
@@ -716,37 +735,40 @@ def calc_save_mean_results_by_dep_times(graph_names, trip_results_by_graph,
         if not trip_results_by_graph[graph_name]:
             continue
         save_trip_result_means_to_csv(means_by_deptime[graph_name],
-            ['Dep time cat.'], output_fname)
+            ['Dep time cat.'], output_fname, save_order=dep_time_print_order)
     print ""
     return
 
 ########################
 
-TRIP_MEAN_HDRS = ['n trips', 'total time', 'init wait', 
-    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
-    'transfers']
-
-TRIP_MEAN_HDRS_OUTPUT = ['n trips', 'total time (min)', 'init wait (min)', 
-    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
-    'transfers']
+# Output header, input dict key, round func.
+TRIP_MEAN_HDRS_OUTPUT = [
+    ('n trips', 'n trips',
+        lambda x: x),
+    ('mean time (min)', 'total time', 
+        lambda x: round(time_utils.get_total_mins(x), OUTPUT_ROUND_TIME_MIN)),
+    ('mean init wait (min)', 'init wait',
+        lambda x: round(time_utils.get_total_mins(x), OUTPUT_ROUND_TIME_MIN)),
+    ('mean tfer wait (min)', 'tfer wait',
+        lambda x: round(time_utils.get_total_mins(x), OUTPUT_ROUND_TIME_MIN)),
+    ('mean direct spd (kph)', 'direct speed (kph)',
+        lambda x: round(x, OUTPUT_ROUND_SPEED_KPH)),
+    ('mean dist direct (km)', 'dist direct (km)',
+        lambda x: round(x, OUTPUT_ROUND_DIST_KM)),
+    ('mean dist trav (km)', 'dist travelled (km)',
+        lambda x: round(x, OUTPUT_ROUND_DIST_KM)),
+    ('mean walk dist (km)', 'walk dist (km)',
+        lambda x: round(x, OUTPUT_ROUND_DIST_KM)),
+    ('mean transfers', 'transfers',
+        lambda x: round(x, OUTPUT_ROUND_TRANSFERS)),
+    ]
 
 def order_and_format_means_for_output(means_dict):
-    means_ordered = [means_dict[TRIP_MEAN_HDRS[ii]] for ii in \
-        range(len(TRIP_MEAN_HDRS))]
-    means_ordered[TRIP_MEAN_HDRS.index('total time')] = \
-        round(time_utils.get_total_mins(means_dict['total time']),
-            OUTPUT_ROUND_TIME_MIN)
-    means_ordered[TRIP_MEAN_HDRS.index('init wait')] = \
-        round(time_utils.get_total_mins(means_dict['init wait']),
-            OUTPUT_ROUND_TIME_MIN)
-    means_ordered[TRIP_MEAN_HDRS.index('direct speed (kph)')] = \
-        round(means_dict['direct speed (kph)'], OUTPUT_ROUND_SPEED_KPH)
-    means_ordered[TRIP_MEAN_HDRS.index('dist travelled (km)')] = \
-        round(means_dict['dist travelled (km)'], OUTPUT_ROUND_DIST_KM)
-    means_ordered[TRIP_MEAN_HDRS.index('walk dist (km)')] = \
-        round(means_dict['walk dist (km)'], OUTPUT_ROUND_DIST_KM)
-    means_ordered[TRIP_MEAN_HDRS.index('transfers')] = \
-        round(means_dict['transfers'], OUTPUT_ROUND_TRANSFERS)
+    means_ordered = [0] * len(TRIP_MEAN_HDRS_OUTPUT)
+    for ii, mean_hdr_tuple in enumerate(TRIP_MEAN_HDRS_OUTPUT):
+        val = means_dict[mean_hdr_tuple[1]]
+        # Apply the rounding function.
+        means_ordered[ii] = mean_hdr_tuple[2](val)
     return means_ordered
 
 #def print_mean_results_short(mean_results_by_category, key_print_order=None):
@@ -807,19 +829,19 @@ def save_trip_result_means_to_csv(means_by_categories, cat_names,
     """Save a group of mean value dicts to a CSV file.
     means_by_categories should be the headings you want for the categories
     in the dict."""
-    if sys.version_info >= (3,0,0):
-        csv_file = open(output_fname, 'w', newline='', delimiter=';')
-    else:
-        csv_file = open(output_fname, 'wb')
-
     if save_order:
         if len(cat_names) > 1:
             raise ValueError("Can't specify a save order if more than one "
                 "depth of category in the output.")
 
-    TRIP_MEANS_BY_OD_HDRS = cat_names + TRIP_MEAN_HDRS_OUTPUT
+    if sys.version_info >= (3,0,0):
+        csv_file = open(output_fname, 'w', newline='', delimiter=';')
+    else:
+        csv_file = open(output_fname, 'wb')
     writer = csv.writer(csv_file, delimiter=';')
-    writer.writerow(TRIP_MEANS_BY_OD_HDRS)
+
+    hdrs_row = cat_names + map(operator.itemgetter(0), TRIP_MEAN_HDRS_OUTPUT)
+    writer.writerow(hdrs_row)
 
     if len(cat_names) > 1:
         flattened_dict = misc_utils.flatten_dict(means_by_categories,
