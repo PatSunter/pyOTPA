@@ -8,8 +8,9 @@ from osgeo import ogr
 import otp_config
 from pyOTPA.Trips_Generator import trips_io
 from pyOTPA.TripRunner import trip_itins_io
-from pyOTPA.TripRunner import trip_analysis
-from pyOTPA.TripRunner import trip_filters
+import trip_analysis
+import trip_filters
+import trip_itin_filters
 
 def main():
     parser = OptionParser()
@@ -76,7 +77,7 @@ def main():
 
     # Now apply various filters to the trip-set ...
     def_desc = "all trips"
-    longest_walk_len_km = trip_filters.DEFAULT_LONGEST_WALK_LEN_KM
+    longest_walk_len_km = trip_itin_filters.DEFAULT_LONGEST_WALK_LEN_KM
     longest_trip_time = timedelta(hours=4)
     filtered_desc = "filtered to remove trips with > %.1fkm walk legs and " \
         "those with calc time > %s" \
@@ -89,13 +90,13 @@ def main():
         # OTP still sometimes returns these where there is no alternative 
         # option, even if well above your specified max walk distance.
         trip_ids_long_walk = \
-            trip_filters.get_trip_ids_with_walk_leg_gr_than_dist_km(
+            trip_itin_filters.get_trip_ids_with_walk_leg_gr_than_dist_km(
                 trip_results, longest_walk_len_km)
         trip_ids_to_exclude.update(trip_ids_long_walk)
         # Filter out trips that took a very long time - e.g. trips starting
         # on a Sunday where there is no service till the next day.
         trip_ids_long_time = \
-            trip_filters.get_trip_ids_with_total_time_gr_than(
+            trip_itin_filters.get_trip_ids_with_total_time_gr_than(
                 trip_results, trip_req_start_dts, longest_trip_time)
         trip_ids_to_exclude.update(trip_ids_long_time)
         trip_results_by_graph_filtered[graph_name] = \
