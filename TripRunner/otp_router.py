@@ -8,7 +8,7 @@ import copy
 import time
 from datetime import datetime
 
-import otp_config
+from pyOTPA import otp_config
 import TripItinerary
 import trip_analysis
 

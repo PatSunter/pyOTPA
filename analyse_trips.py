@@ -5,11 +5,11 @@ from datetime import date, datetime, time, timedelta
 from optparse import OptionParser
 from osgeo import ogr
 
-import Trips_Generator.trips_io
-import trip_itins_io
 import otp_config
-import trip_analysis
-import trip_filters
+from pyOTPA.Trips_Generator import trips_io
+from pyOTPA.TripRunner import trip_itins_io
+from pyOTPA.TripRunner import trip_analysis
+from pyOTPA.TripRunner import trip_filters
 
 def main():
     parser = OptionParser()
@@ -66,7 +66,7 @@ def main():
         graph_names = options.analyse_graphs.split(',')
 
     trips_by_id, trips = \
-        Trips_Generator.trips_io.read_trips_from_shp_file_otp_srs(
+        trips_io.read_trips_from_shp_file_otp_srs(
             trips_shpfilename)
     trip_req_start_dts = trip_analysis.get_trip_req_start_dts(
         trips_by_id, trip_req_start_date)

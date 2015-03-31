@@ -1,7 +1,7 @@
 
 from osgeo import ogr, osr
 
-import otp_config
+from pyOTPA import otp_config
 
 # Chose EPSG:28355 ("GDA94 / MGA zone 55") as an appropriate projected
     # spatial ref. system, in meters, for the Melbourne region.

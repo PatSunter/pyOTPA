@@ -5,9 +5,9 @@ import os.path
 import json
 from datetime import datetime, date, time
 
-import otp_router
-import trip_itins_io
-import Trips_Generator.trips_io
+from TripRunner import otp_router
+from TripRunner import trip_itins_io
+from Trips_Generator import trips_io
 
 def main():
     SERVER_URL = 'http://130.56.248.56'
@@ -59,7 +59,7 @@ def main():
     output_base_dir = "./output/%s" % trips_set_name
 
     trips_by_id, trips = \
-        Trips_Generator.trips_io.read_trips_from_shp_file_otp_srs(
+        trips_io.read_trips_from_shp_file_otp_srs(
             trips_shpfilename)
 
     print "\nGoing to request OTP server at %s to route %d trips, defined in "\

@@ -6,9 +6,9 @@ import itertools
 import json
 import copy
 
-import geom_utils
-import time_utils
-import otp_config
+from pyOTPA import geom_utils
+from pyOTPA import time_utils
+from pyOTPA import otp_config
 
 ########################
 ## Analysis and Printing

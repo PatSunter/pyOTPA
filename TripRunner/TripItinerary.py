@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 import json
 
-import otp_config
-import time_utils
+from pyOTPA import otp_config
+from pyOTPA import time_utils
 
 class TripItinerary:
     """This is really a lightweight wrapper class around OTP's 'itinerary'
