@@ -1,16 +1,17 @@
 #!/usr/bin/env python2
 
 import os.path
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from optparse import OptionParser
 from osgeo import ogr
 
-import otp_config
+from pyOTPA import otp_config
+from pyOTPA import Trip
 from pyOTPA import trips_io
 from pyOTPA import trip_itins_io
-import trip_analysis
-import trip_filters
-import trip_itin_filters
+from pyOTPA import trip_analysis
+from pyOTPA import trip_filters
+from pyOTPA import trip_itin_filters
 
 def main():
     parser = OptionParser()
@@ -29,6 +30,7 @@ def main():
             'times - separated by a , .')
     (options, args) = parser.parse_args()
     
+
     output_base_dir = options.results_base_dir
     if not output_base_dir:
         parser.print_help()
@@ -66,10 +68,32 @@ def main():
     if options.analyse_graphs:
         graph_names = options.analyse_graphs.split(',')
 
+    # TODO:- really should be reading these in from CSV - and saving results
+    # likewise.
+    dep_time_cats = {}
+    dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
+        time(4,00), time(7,00))
+    dep_time_cats['weekday_morning_peak'] = ([0,1,2,3,4],
+        time(7,00), time(10,00))
+    dep_time_cats['weekday_interpeak'] = ([0,1,2,3,4],
+        time(10,00), time(16,00))
+    dep_time_cats['weekday_arvo_peak'] = ([0,1,2,3,4],
+        time(16,00), time(18,30))
+    dep_time_cats['weekday_evening'] = ([0,1,2,3,4],
+        time(18,30), time(23,59,59))
+    dep_time_cats['saturday'] = ([5],
+        time(0,00), time(23,59,59))
+    dep_time_cats['sunday'] = ([6],
+        time(0,00), time(23,59,59))
+    dep_time_print_order = [
+        'weekday_morning_early', 'weekday_morning_peak',
+        'weekday_interpeak', 'weekday_arvo_peak', 'weekday_evening',
+        'saturday', 'sunday']
+
     trips_by_id, trips = \
         trips_io.read_trips_from_shp_file_otp_srs(
             trips_shpfilename)
-    trip_req_start_dts = trip_analysis.get_trip_req_start_dts(
+    trip_req_start_dts = Trip.get_trip_req_start_dts(
         trips_by_id, trip_req_start_date)
 
     trip_results_by_graph = trip_itins_io.load_trip_itineraries(
@@ -100,7 +124,7 @@ def main():
                 trip_results, trip_req_start_dts, longest_trip_time)
         trip_ids_to_exclude.update(trip_ids_long_time)
         trip_results_by_graph_filtered[graph_name] = \
-            trip_analysis.get_trips_subset_by_ids_to_exclude(trip_results, 
+            Trip.get_trips_subset_by_ids_to_exclude(trip_results, 
                 trip_ids_to_exclude)
 
     # Also create a separate filtered list of trips within a target distance
@@ -130,7 +154,7 @@ def main():
             trip_filters.get_trip_ids_near_network_stops(trips_by_id,
                 imp_network_stop_lyrs, buff_dist_m, trip_result_ids_iter)
         trip_results_by_graph_near_imp_network_stops[graph_name] = \
-            trip_analysis.get_trips_subset_by_ids(trip_results, 
+            Trip.get_trips_subset_by_ids(trip_results, 
                 trip_ids_near_imp_route_stops)
     print "...done."
 
@@ -149,45 +173,41 @@ def main():
         trips_by_id, trip_req_start_dts,
         description=near_upgraded_routes_desc)
 
-    # Print further, more advanced analysis just on the filtered trips for the
-    # moment.
-    trip_analysis.calc_print_mean_results_agg_by_mode_agency(
+    # Print some modal analysis ...
+    trip_analysis.calc_print_mean_usage_by_mode(
         trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
         trips_by_id, trip_req_start_dts, 
         description=filtered_desc)
 
-    # TODO:- really should be reading these in from CSV - and saving results
-    # likewise.
-    dep_time_cats = {}
-    dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
-        time(4,00), time(7,00))
-    dep_time_cats['weekday_morning_peak'] = ([0,1,2,3,4],
-        time(7,00), time(10,00))
-    dep_time_cats['weekday_interpeak'] = ([0,1,2,3,4],
-        time(10,00), time(16,00))
-    dep_time_cats['weekday_arvo_peak'] = ([0,1,2,3,4],
-        time(16,00), time(18,30))
-    dep_time_cats['weekday_evening'] = ([0,1,2,3,4],
-        time(18,30), time(23,59,59))
-    dep_time_cats['saturday'] = ([5],
-        time(0,00), time(23,59,59))
-    dep_time_cats['sunday'] = ([6],
-        time(0,00), time(23,59,59))
-    dep_time_print_order = [
-        'weekday_morning_early', 'weekday_morning_peak',
-        'weekday_interpeak', 'weekday_arvo_peak', 'weekday_evening',
-        'saturday', 'sunday']
+    # Save longer breakdowns to files.
+    trip_analysis.calc_save_mean_results_by_first_non_walk_mode(
+        trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
+        trips_by_id, trip_req_start_dts, 
+        description=filtered_desc,
+        output_file_base=os.path.join(output_base_dir,
+            "means_by_first_nonwalk_mode-filtered"))
 
-    trip_analysis.calc_print_mean_results_by_dep_times(
+    trip_analysis.calc_save_mean_results_by_agencies_used(
+        trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
+        trips_by_id, trip_req_start_dts, 
+        description=filtered_desc,
+        output_file_base=os.path.join(output_base_dir, 
+            "means_by_agencies_used-filtered"))
+
+    trip_analysis.calc_save_mean_results_by_dep_times(
         trip_results_by_graph.keys(), trip_results_by_graph, 
         trips_by_id, trip_req_start_dts, dep_time_cats, 
         description=def_desc,
+        output_file_base=os.path.join(output_base_dir, 
+            "means_by_deptime"),
         dep_time_print_order=dep_time_print_order)
 
-    trip_analysis.calc_print_mean_results_by_dep_times(
+    trip_analysis.calc_save_mean_results_by_dep_times(
         trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
         trips_by_id, trip_req_start_dts, dep_time_cats, 
         description=filtered_desc,
+        output_file_base=os.path.join(output_base_dir, 
+            "means_by_deptime-filtered"),
         dep_time_print_order=dep_time_print_order)
 
     print "Saving info for individual routes (on filtered trips) to files:"
@@ -218,6 +238,24 @@ def main():
             trip_results_by_graph[graph_name_1], 
             trip_results_by_graph[graph_name_2],
             comp_shpfilename)
+
+        times_1, times_2 = trip_analysis.extract_trip_times_otp_format(trips_by_id, 
+            trip_req_start_dts,
+            trip_results_by_graph[graph_name_1], 
+            trip_results_by_graph[graph_name_2])
+        stats = trip_analysis.compute_trip_result_comparison_stats(times_1, times_2)
+        #print "Overall stats comparing between graphs '%s' and '%s' as "\
+        #    "follows:" % (graph_name_1, graph_name_2)
+        #trip_analysis.print_trip_result_comparison_stats(stats)
+
+        times_1, times_2 = trip_analysis.extract_trip_times_otp_format(trips_by_id, 
+            trip_req_start_dts,
+            trip_results_by_graph_near_imp_network_stops[graph_name_1], 
+            trip_results_by_graph_near_imp_network_stops[graph_name_2])
+        stats = trip_analysis.compute_trip_result_comparison_stats(times_1, times_2)
+        #print "Stats comparing between graphs '%s' and '%s' - near improved "\
+        #    "network stops:- as follows:" % (graph_name_1, graph_name_2)
+        #trip_analysis.print_trip_result_comparison_stats(stats)
 
     # cleanup
     train_stops_shp.Destroy()

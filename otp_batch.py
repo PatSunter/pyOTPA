@@ -7,6 +7,7 @@ import itertools
 import makepaths
 import taz_files
 import od_matrix_analysis
+from pyOTPA import trip_analysis
 
 TAG_GRAPH = "REPLACE_GRAPH_NAME"
 TAG_RUN_NAME = "REPLACE_RUN_NAME"
@@ -221,5 +222,8 @@ def print_comparison_stats(run_dicts, comparison_run_name,
         if run_name == comparison_run_name: continue
         print "Computing stats for run '%s':" % run_name
         comp_csv_filename = get_comp_csv_fname(run_name, comparison_ext)
-        stats = od_matrix_analysis.compute_comparison_stats(comp_csv_filename)
-        od_matrix_analysis.print_comparison_stats(stats)
+        routesArray, otp_curr_times, otp_new_times = \
+            readComparisonFile(comp_csv_filename)
+        stats = trip_analysis.compute_trip_result_comparison_stats(
+            otp_curr_times, otp_new_times)
+        trip_analysis.print_trip_result_comparison_stats(stats)

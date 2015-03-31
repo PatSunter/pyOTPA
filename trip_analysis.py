@@ -1,15 +1,23 @@
 import sys
 import csv
 import os, os.path
-from datetime import datetime, timedelta, time
+from datetime import timedelta
 import itertools
+import operator
 import json
 import copy
 
 from pyOTPA import geom_utils
 from pyOTPA import time_utils
+from pyOTPA import misc_utils
 from pyOTPA import otp_config
 from pyOTPA import Trip
+
+# Numbers of decimal places to round various outputs to.
+OUTPUT_ROUND_DIST_KM = 3
+OUTPUT_ROUND_SPEED_KPH = 2
+OUTPUT_ROUND_TRANSFERS = 1
+OUTPUT_ROUND_TIME_MIN = 2
 
 ########################
 ## Analysis and Printing
@@ -55,30 +63,6 @@ def calc_mean_tfer_waits(trip_itins):
     total_sec = time_utils.get_total_sec(sum_val)
     mean_sec = total_sec / float(len(trip_itins))
     return timedelta(seconds=mean_sec)
-
-def calc_mean_init_waits_by_mode(trip_itins, trip_req_start_dts):
-    sum_modal_init_waits = {}
-    cnt_modal_init_waits = {}
-    for mode in otp_config.OTP_NON_WALK_MODES:
-        sum_modal_init_waits[mode] = timedelta(0)
-        cnt_modal_init_waits[mode] = 0
-    for trip_id, trip_itin in trip_itins.iteritems():
-        # Skip legs that are pure walking
-        first_non_walk_mode = trip_itin.get_first_non_walk_mode()
-        if first_non_walk_mode:
-            trip_init_wait = trip_itin.get_init_wait_td(
-                trip_req_start_dts[trip_id])
-            sum_modal_init_waits[first_non_walk_mode] += trip_init_wait
-            cnt_modal_init_waits[first_non_walk_mode] += 1
-    mean_modal_init_waits = {}
-    for mode in otp_config.OTP_NON_WALK_MODES:
-        if cnt_modal_init_waits[mode]:
-            total_sec = time_utils.get_total_sec(sum_modal_init_waits[mode])
-            mean_sec = total_sec / float(cnt_modal_init_waits[mode])
-            mean_modal_init_waits[mode] = timedelta(seconds=mean_sec)
-        else:
-            mean_modal_init_waits[mode] = None
-    return mean_modal_init_waits, cnt_modal_init_waits
 
 def calc_mean_walk_dist_km(trip_itins):
     return calc_mean_basic_itin_attr(trip_itins, 'walkDistance') / 1000.0
@@ -226,20 +210,6 @@ def calc_mean_modal_speeds(trip_itins):
             means_modal_speeds[mode] = None
     return means_modal_speeds
 
-TRIP_MEAN_HDRS = ['n trips', 'total time', 'init wait', 
-    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
-    'transfers']
-
-TRIP_MEAN_HDRS_OUTPUT = ['n trips', 'total time (min)', 'init wait (min)', 
-    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
-    'transfers']
-
-# Numbers of decimal places to round various outputs to.
-OUTPUT_ROUND_DIST_KM = 3
-OUTPUT_ROUND_SPEED_KPH = 2
-OUTPUT_ROUND_TRANSFERS = 1
-OUTPUT_ROUND_TIME_MIN = 2
-
 def calc_means_of_tripset(trip_results, trips_by_id, trip_req_start_dts):
     assert len(trip_results) > 0
     means = {}
@@ -255,49 +225,6 @@ def calc_means_of_tripset(trip_results, trips_by_id, trip_req_start_dts):
     means['walk dist (km)'] = calc_mean_walk_dist_km(trip_results) 
     means['transfers'] = calc_mean_transfers(trip_results)
     return means
-
-def order_and_format_means_for_output(means_dict):
-    means_ordered = [means_dict[TRIP_MEAN_HDRS[ii]] for ii in \
-        range(len(TRIP_MEAN_HDRS))]
-    means_ordered[TRIP_MEAN_HDRS.index('total time')] = \
-        round(time_utils.get_total_mins(means_dict['total time']),
-            OUTPUT_ROUND_TIME_MIN)
-    means_ordered[TRIP_MEAN_HDRS.index('init wait')] = \
-        round(time_utils.get_total_mins(means_dict['init wait']),
-            OUTPUT_ROUND_TIME_MIN)
-    means_ordered[TRIP_MEAN_HDRS.index('direct speed (kph)')] = \
-        round(means_dict['direct speed (kph)'], OUTPUT_ROUND_SPEED_KPH)
-    means_ordered[TRIP_MEAN_HDRS.index('dist travelled (km)')] = \
-        round(means_dict['dist travelled (km)'], OUTPUT_ROUND_DIST_KM)
-    means_ordered[TRIP_MEAN_HDRS.index('walk dist (km)')] = \
-        round(means_dict['walk dist (km)'], OUTPUT_ROUND_DIST_KM)
-    means_ordered[TRIP_MEAN_HDRS.index('transfers')] = \
-        round(means_dict['transfers'], OUTPUT_ROUND_TRANSFERS)
-    return means_ordered
-
-def print_mean_results(mean_results_by_category, key_print_order=None):
-    if key_print_order:
-        keys = key_print_order
-    else:
-        keys = mean_results_by_category.keys()
-        
-    for key in keys:
-        means = mean_results_by_category[key]
-        if not means:
-            print "  '%s': no results." % key
-            continue     
-        print "  '%s': %d trips, mean trip time %s, mean dist travelled "\
-            "%.2fkm, direct speed %.2f km/h, "\
-            "walk dist %.2fm, # of transfers %.1f" % \
-             (key,
-              means['n trips'],
-              means['total time'],
-              means['dist travelled (km)'],
-              means['direct speed (kph)'],
-              means['walk dist (km)'] * 1000.0,
-              means['transfers'])
-    print ""
-    return
 
 def categorise_trip_ids_by_first_non_walk_mode(trip_itins):
     trips_by_first_mode = {}
@@ -437,42 +364,6 @@ def calc_save_trip_info_by_mode_agency_route(trip_itins, trip_req_start_dts, out
     csv_file.close()
     return
 
-def get_trip_req_start_dts(trips_by_id, trip_req_start_date):
-    trip_req_start_dts = {}
-    for trip_id, trip in trips_by_id.iteritems():
-        if isinstance(trip[Trip.START_DTIME], datetime):
-            trip_req_start_dts[trip_id] = trip[Trip.START_DTIME]
-        else:
-            trip_req_start_dts[trip_id] = datetime.combine(trip_req_start_date,
-                trip[Trip.START_DTIME])
-    return trip_req_start_dts
-
-def get_trips_subset_by_ids(trip_results_dict, trip_ids_to_select):
-    trip_results_filtered = {}
-    for trip_id in trip_ids_to_select:
-        try:
-            trip_results_filtered[trip_id] = trip_results_dict[trip_id]
-        except KeyError:
-            raise ValueError("Input trip_results_dict didn't contain at "\
-                "least one of the trip IDs ('%s') you requested in "\
-                "trip_ids_to_select." % trip_id)
-    return trip_results_filtered
-
-def get_trips_subset_by_ids_to_exclude(trip_results_dict, trip_ids_to_exclude):
-    # In the excluding IDs case:- start by creating a copy of the entire 
-    # first dict:- since it will be faster to just delete dictionary entries
-    # that are excluded. copy.copy just creates a new dictionary pointing to
-    # the same actual entries in memory, so this won't waste lots of space.
-    trip_results_filtered = copy.copy(trip_results_dict)
-    for trip_id in trip_ids_to_exclude:
-        try:
-            del(trip_results_filtered[trip_id])
-        except KeyError:
-            print "Warning: Input trip_results_dict didn't contain at "\
-                "least one of the trip IDs ('%s') you requested to exclude "\
-                "in trip_ids_to_exclude." % trip_id
-    return trip_results_filtered
-
 def calc_means_of_tripset_by_first_non_walk_mode(trip_results_by_graph,
     trips_by_id, trip_req_start_dts):
 
@@ -520,7 +411,7 @@ def calc_print_mean_results_overall_summaries(
     print_mean_results(means)
     return
 
-def calc_print_mean_results_agg_by_mode_agency(
+def calc_print_mean_usage_by_mode(
         graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts, 
         description=None):
 
@@ -532,10 +423,9 @@ def calc_print_mean_results_agg_by_mode_agency(
     means_modal_dists = {}
     means_modal_dist_leg = {}
     means_modal_speeds = {}
-    means_init_waits_by_mode = {}
-    counts_init_waits_by_mode = {}
     means_init_waits = {}
     means_tfer_waits = {}
+
     for graph_name in graph_names:
         trip_results = trip_results_by_graph[graph_name]
         if not trip_results: continue
@@ -563,45 +453,18 @@ def calc_print_mean_results_agg_by_mode_agency(
         means_tfer_waits[graph_name] = \
             calc_mean_tfer_waits(trip_results)
     
-    for graph_name, trip_results in trip_results_by_graph.iteritems():
-        if not trip_results: continue
-        miw_by_mode, ciw_by_mode = \
-            calc_mean_init_waits_by_mode(trip_results,
-                trip_req_start_dts)
-        means_init_waits_by_mode[graph_name] = miw_by_mode
-        counts_init_waits_by_mode[graph_name] = ciw_by_mode
-
-    means_by_first_non_walk_mode = \
-        calc_means_of_tripset_by_first_non_walk_mode(
-            trip_results_by_graph, trips_by_id, trip_req_start_dts)
-
-    trips_by_agencies_used = {}
-    means_by_agencies_used = {}
-    for graph_name in graph_names:
-        # Further classify by agencies used
-        trip_results = trip_results_by_graph[graph_name]
-        if not trip_results: continue
-        trips_by_agencies_used[graph_name] = \
-            categorise_trips_by_agencies_used(trip_results)
-        means_by_agencies_used[graph_name] = {}
-        for agency_tuple, trip_itins in \
-                trips_by_agencies_used[graph_name].iteritems():
-            means_by_agencies_used[graph_name][agency_tuple] = \
-                calc_means_of_tripset(trip_itins, trips_by_id,
-                    trip_req_start_dts)
-
     if description:
-        extra_string = " (%s)" % description
+        extra_string = " (on trips %s)" % description
     else:
         extra_string = ""
-    print "\nTrip results%s: aggregated by mode were:" % extra_string
+    print "\nVehicle usage totals by mode%s were:" % extra_string
     for graph_name in graph_names:
         trip_results = trip_results_by_graph[graph_name]
         if not trip_results: 
             print "(Graph %s had no results - skipping.)" % graph_name
             continue
-        print "For graph %s, aggregated results for mode use were:" \
-            % graph_name
+        print "For graph %s:" % graph_name
+
         print "  mode, mean time (all trips), mean dist (all trips), "\
             "# trips used in, # legs, total dist (km), "\
             "mean dist/leg (m), mean in-vehicle speed (km/h)"
@@ -621,42 +484,135 @@ def calc_print_mean_results_agg_by_mode_agency(
                 print "  %s, None, None, 0, 0, 0 km, None, None," % mode
         print "  initial wait, %s, " % means_init_waits[graph_name]
         print "  transfer wait, %s, " % means_tfer_waits[graph_name]
+    print ""
+    return
 
-        print "\n  mean init waits, total trip times, trip overall speeds, "\
-            "by first non-walk mode:"
-        for mode in otp_config.OTP_NON_WALK_MODES:
-            if counts_init_waits_by_mode[graph_name][mode]: 
-                print "    %s: %s, %s, %.2f km/h (%d trips)" % (mode, \
-                    means_init_waits_by_mode[graph_name][mode],
-                    means_by_first_non_walk_mode[graph_name][mode]['total time'],
-                    means_by_first_non_walk_mode[graph_name][mode]['direct speed (kph)'],
-                    counts_init_waits_by_mode[graph_name][mode])
-            else:
-                print "    %s: None, None, None (0 trips)" % (mode)
-        print ""
+def calc_print_mean_results_by_first_non_walk_mode(
+        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts,
+        description=None):
 
-        print "  mean init waits, total trip times, trip overall speeds, "\
-            "by agencies used (sorted by speed):"
+    means_by_first_non_walk_mode = \
+        calc_means_of_tripset_by_first_non_walk_mode(
+            trip_results_by_graph, trips_by_id, trip_req_start_dts)
+
+    if description:
+        extra_string = " (%s)" % description
+    else:
+        extra_string = ""
+    print "\nTrip results%s: aggregated by first non-walk mode were:" % extra_string
+    for graph_name in graph_names:
+        print "For graph %s:" % graph_name
+        trip_results = means_by_first_non_walk_mode[graph_name]
+        if not trip_results: 
+            print "(Graph %s had no results - skipping.)" % graph_name
+            continue
+        # TODO: Should be compact version ...    
+        print_mean_results(means_by_first_non_walk_mode[graph_name],
+            otp_config.OTP_NON_WALK_MODES)
+        continue    
+    return
+
+def calc_save_mean_results_by_first_non_walk_mode(
+        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts,
+        description, output_file_base):
+
+    means_by_first_non_walk_mode = \
+        calc_means_of_tripset_by_first_non_walk_mode(
+            trip_results_by_graph, trips_by_id, trip_req_start_dts)
+
+    for graph_name in graph_names:
+        output_fname = output_file_base + "-%s.csv" % graph_name
+        print "Saving mean results by agencies (%s) for graph %s: to file %s" \
+            % (description, graph_name, output_fname)
+        if not trip_results_by_graph[graph_name]:
+            continue
+        
+        save_trip_result_means_to_csv(means_by_first_non_walk_mode[graph_name],
+            ['mode'], output_fname,
+            save_order=otp_config.OTP_NON_WALK_MODES)
+    print ""
+    return
+
+def calc_mean_results_agg_by_agencies_used(
+        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts):
+
+    trips_by_agencies_used = {}
+    means_by_agencies_used = {}
+    for graph_name in graph_names:
+        # Further classify by agencies used
+        trip_results = trip_results_by_graph[graph_name]
+        if not trip_results: continue
+        trips_by_agencies_used[graph_name] = \
+            categorise_trips_by_agencies_used(trip_results)
+        means_by_agencies_used[graph_name] = {}
+        for agency_tuple, trip_itins in \
+                trips_by_agencies_used[graph_name].iteritems():
+            means_by_agencies_used[graph_name][agency_tuple] = \
+                calc_means_of_tripset(trip_itins, trips_by_id,
+                    trip_req_start_dts)
+    return trips_by_agencies_used, means_by_agencies_used
+
+def calc_print_mean_results_by_agencies_used(
+        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts, 
+        description=None):
+    trips_by_agencies_used, means_by_agencies_used = \
+        calc_mean_results_agg_by_agencies_used(graph_names,
+            trip_results_by_graph, trips_by_id, trip_req_start_dts)
+
+    if description:
+        extra_string = " (%s)" % description
+    else:
+        extra_string = ""
+    print "\nTrip results%s: aggregated by agencies used in trips were:" % extra_string
+    for graph_name in graph_names:
+        print "For graph %s:" % graph_name
+        trip_results = trip_results_by_graph[graph_name]
+        if not trip_results: 
+            print "(Graph %s had no results - skipping.)" % graph_name
+            continue
+            
         agency_tups_and_means_sorted_by_spd = sorted(
             means_by_agencies_used[graph_name].iteritems(), 
             key = lambda x: x[1]['direct speed (kph)'])
-        for agency_tuple, means in \
-                reversed(agency_tups_and_means_sorted_by_spd):
-            if means:
-                print "    %s: %s, %s, %.2f km/h (%d trips)" \
-                    % (agency_tuple, \
-                       means['init wait'],
-                       means['total time'],
-                       means['direct speed (kph)'],
-                       means['n trips'])
-            else:
-                print "    %s: None, None, None (0 trips)" % agency_tuple
+        agency_tups_sorted_by_rev_spd = reversed(
+            map(operator.itemgetter(0), agency_tups_and_means_sorted_by_spd))
+            
+        print_mean_results(means_by_agencies_used[graph_name],
+            agency_tups_sorted_by_rev_spd)
         print ""
-    #import pdb
-    #pdb.set_trace()
+    return 
 
-    return
+def calc_save_mean_results_by_agencies_used(
+        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts, 
+        description, output_file_base):
+    trips_by_agencies_used, means_by_agencies_used = \
+        calc_mean_results_agg_by_agencies_used(graph_names,
+            trip_results_by_graph, trips_by_id, trip_req_start_dts)
+        
+    for graph_name in graph_names:
+        output_fname = output_file_base + "-%s.csv" % graph_name
+        print "Saving mean results by agencies (%s) for graph %s: to file %s" \
+            % (description, graph_name, output_fname)
+        if not trip_results_by_graph[graph_name]:
+            continue
+        
+        means_by_agencies_used_strkeys = {}
+        for ag_tup, vals in means_by_agencies_used[graph_name].iteritems():
+            strkey = ", ".join(ag_tup)
+            means_by_agencies_used_strkeys[strkey] = vals
 
+        agency_strs_and_means_sorted_by_spd = sorted(
+            means_by_agencies_used_strkeys.iteritems(), 
+            key = lambda x: x[1]['direct speed (kph)'])
+        agency_strs_sorted_by_rev_spd = reversed(
+            map(operator.itemgetter(0), agency_strs_and_means_sorted_by_spd))
+        save_trip_result_means_to_csv(means_by_agencies_used_strkeys,
+            ['agencies used'], output_fname,
+            save_order=agency_strs_sorted_by_rev_spd)
+    print ""
+         
+    return 
+ 
 def get_results_in_dep_time_range(trip_results, trip_req_start_dts,
         dep_time_info):
     trip_results_subset = {}
@@ -668,9 +624,7 @@ def get_results_in_dep_time_range(trip_results, trip_req_start_dts,
             trip_results_subset[trip_id] = trip_result
     return trip_results_subset
 
-def calc_save_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts,
-        output_fname):
-
+def calc_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts):
     tripsets_by_od_sla = categorise_trip_results_by_od_sla(trip_itins,
         trips_by_id)
     means_by_od_sla = {}
@@ -679,30 +633,18 @@ def calc_save_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts,
         for d_sla, trip_itins in tripsets_by_dest_sla.iteritems():
             means_by_od_sla[o_sla][d_sla] = calc_means_of_tripset(
                 trip_itins, trips_by_id, trip_req_start_dts)
-    
-    if sys.version_info >= (3,0,0):
-        csv_file = open(output_fname, 'w', newline='')
-    else:
-        csv_file = open(output_fname, 'wb')
+    return means_by_od_sla
 
-    TRIP_MEANS_BY_OD_HDRS = ['Origin SLA', 'Dest SLA'] \
-        + TRIP_MEAN_HDRS_OUTPUT
-    writer = csv.writer(csv_file, delimiter=',')
-    writer.writerow(TRIP_MEANS_BY_OD_HDRS)
+def calc_save_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts,
+        output_fname):
+    means_by_od_sla = calc_trip_info_by_OD_SLA(trip_itins, trips_by_id, 
+        trip_req_start_dts)
+    save_trip_result_means_to_csv(means_by_od_sla,
+        ['Origin SLA', 'Dest SLA'], output_fname)
+    return means_by_od_sla
 
-    for o_sla, means_by_d_sla in means_by_od_sla.iteritems():
-        for d_sla, means in means_by_d_sla.iteritems():
-            out_row_base = [o_sla, d_sla]
-            means_ordered = order_and_format_means_for_output(means)
-            out_row = out_row_base + means_ordered
-            writer.writerow(out_row)
-    csv_file.close()
-    return
-
-def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
-        trips_by_id, trip_req_start_dts,
-        dep_time_cats, description=None,
-        dep_time_print_order=None ):
+def calc_mean_results_by_dep_times(graph_names, trip_results_by_graph,
+        trips_by_id, trip_req_start_dts, dep_time_cats):
     """Similar to the normal mean-printing function:- but this time breaks
     down results into categories based on departure times.
     These are given by input dictionary 'dep_time_cats': with each entry
@@ -735,11 +677,21 @@ def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
             else:
                 # In case there's no results in that time period
                 means_by_deptime[graph_name][dep_time_cat] = None
+    return means_by_deptime
+
+def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
+        trips_by_id, trip_req_start_dts,
+        dep_time_cats, description=None,
+        dep_time_print_order=None ):
+
+    means_by_deptime = calc_mean_results_by_dep_times(graph_names,
+        trip_results_by_graph, trips_by_id, trip_req_start_dts, dep_time_cats)
 
     if description:
         extra_string = " (%s)" % description
     else:
         extra_string = ""
+
     print "\nMean results for the %d trips%s, by departure time period, were:" \
         % (max(map(len, trip_results_by_graph.itervalues())), extra_string)
     for graph_name in graph_names:
@@ -749,6 +701,310 @@ def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
             continue
         print_mean_results(means_by_deptime[graph_name], dep_time_print_order)
     return        
+
+def calc_save_mean_results_by_dep_times(graph_names, trip_results_by_graph,
+        trips_by_id, trip_req_start_dts, dep_time_cats,
+        description, output_file_base, dep_time_print_order=None ):
+
+    means_by_deptime = calc_mean_results_by_dep_times(graph_names,
+        trip_results_by_graph, trips_by_id, trip_req_start_dts, dep_time_cats)
+
+    for graph_name in graph_names:
+        output_fname = output_file_base + "-%s.csv" % graph_name
+        print "Saving mean results (%s) for graph %s: to file %s" \
+            % (description, graph_name, output_fname)
+        if not trip_results_by_graph[graph_name]:
+            continue
+        save_trip_result_means_to_csv(means_by_deptime[graph_name],
+            ['Dep time cat.'], output_fname)
+    print ""
+    return
+
+########################
+
+TRIP_MEAN_HDRS = ['n trips', 'total time', 'init wait', 
+    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
+    'transfers']
+
+TRIP_MEAN_HDRS_OUTPUT = ['n trips', 'total time (min)', 'init wait (min)', 
+    'direct speed (kph)', 'dist travelled (km)', 'walk dist (km)',
+    'transfers']
+
+def order_and_format_means_for_output(means_dict):
+    means_ordered = [means_dict[TRIP_MEAN_HDRS[ii]] for ii in \
+        range(len(TRIP_MEAN_HDRS))]
+    means_ordered[TRIP_MEAN_HDRS.index('total time')] = \
+        round(time_utils.get_total_mins(means_dict['total time']),
+            OUTPUT_ROUND_TIME_MIN)
+    means_ordered[TRIP_MEAN_HDRS.index('init wait')] = \
+        round(time_utils.get_total_mins(means_dict['init wait']),
+            OUTPUT_ROUND_TIME_MIN)
+    means_ordered[TRIP_MEAN_HDRS.index('direct speed (kph)')] = \
+        round(means_dict['direct speed (kph)'], OUTPUT_ROUND_SPEED_KPH)
+    means_ordered[TRIP_MEAN_HDRS.index('dist travelled (km)')] = \
+        round(means_dict['dist travelled (km)'], OUTPUT_ROUND_DIST_KM)
+    means_ordered[TRIP_MEAN_HDRS.index('walk dist (km)')] = \
+        round(means_dict['walk dist (km)'], OUTPUT_ROUND_DIST_KM)
+    means_ordered[TRIP_MEAN_HDRS.index('transfers')] = \
+        round(means_dict['transfers'], OUTPUT_ROUND_TRANSFERS)
+    return means_ordered
+
+#def print_mean_results_short(mean_results_by_category, key_print_order=None):
+        #print "  mean init waits, total trip times, trip overall speeds, "\
+        #    "by agencies used (sorted by speed):"
+        #for agency_tuple, means in \
+        #        reversed(agency_tups_and_means_sorted_by_spd):
+        #    if means:
+        #        print "    %s: %s, %s, %.2f km/h (%d trips)" \
+        #            % (agency_tuple, \
+        #               means['init wait'],
+        #               means['total time'],
+        #               means['direct speed (kph)'],
+        #               means['n trips'])
+        #    else:
+        #        print "    %s: None, None, None (0 trips)" % agency_tuple
+
+# From the by first non-walk mode.
+        #print "  mean init waits, total trip times, trip overall speeds:"
+        #for mode in otp_config.OTP_NON_WALK_MODES:
+        #    if counts_init_waits_by_mode[graph_name][mode]: 
+        #        print "    %s: %s, %s, %.2f km/h (%d trips)" % (mode, \
+        #            means_init_waits_by_mode[graph_name][mode],
+        #            means_by_first_non_walk_mode[graph_name][mode]['total time'],
+        #            means_by_first_non_walk_mode[graph_name][mode]['direct speed (kph)'],
+        #            counts_init_waits_by_mode[graph_name][mode])
+        #    else:
+        #        print "    %s: None, None, None (0 trips)" % (mode)
+        #print ""
+  
+def print_mean_results(mean_results_by_category, key_print_order=None):
+    if key_print_order:
+        keys = key_print_order
+    else:
+        keys = mean_results_by_category.keys()
+        
+    for key in keys:
+        means = mean_results_by_category[key]
+        if not means:
+            print "  '%s': no results." % key
+            continue     
+        print "  '%s': %d trips, mean trip time %s, mean init wait %s, mean dist travelled "\
+            "%.2fkm, direct speed %.2f km/h, "\
+            "walk dist %.2fm, # of transfers %.1f" % \
+             (key,
+              means['n trips'],
+              means['total time'],
+              means['init wait'],
+              means['dist travelled (km)'],
+              means['direct speed (kph)'],
+              means['walk dist (km)'] * 1000.0,
+              means['transfers'])
+    print ""
+    return
+
+def save_trip_result_means_to_csv(means_by_categories, cat_names,
+        output_fname, save_order=None):
+    """Save a group of mean value dicts to a CSV file.
+    means_by_categories should be the headings you want for the categories
+    in the dict."""
+    if sys.version_info >= (3,0,0):
+        csv_file = open(output_fname, 'w', newline='', delimiter=';')
+    else:
+        csv_file = open(output_fname, 'wb')
+
+    if save_order:
+        if len(cat_names) > 1:
+            raise ValueError("Can't specify a save order if more than one "
+                "depth of category in the output.")
+
+    TRIP_MEANS_BY_OD_HDRS = cat_names + TRIP_MEAN_HDRS_OUTPUT
+    writer = csv.writer(csv_file, delimiter=';')
+    writer.writerow(TRIP_MEANS_BY_OD_HDRS)
+
+    if len(cat_names) > 1:
+        flattened_dict = misc_utils.flatten_dict(means_by_categories,
+            max_levels=len(cat_names))
+        output_dict = flattened_dict
+        output_keys = output_dict.iterkeys()
+    else:    
+        output_dict = means_by_categories
+        if not save_order:
+            output_keys = output_dict.iterkeys()
+        else:
+            output_keys = save_order
+
+    for key in output_keys:
+        means=output_dict[key]
+        if len(cat_names) > 1:
+            cats_tuple = key
+            out_row_base = list(cats_tuple)
+        else:
+            out_row_base = [key]
+        means_ordered = order_and_format_means_for_output(means)
+        out_row = out_row_base + means_ordered
+        writer.writerow(out_row)
+    csv_file.close()
+    return 
+
+#####################
+
+def extract_trip_times_otp_format(trips_by_id, trip_req_start_dts,
+        trip_itins_1, trip_itins_2):
+    """A conversion function from a dict of TripItinerary's to just extract
+    trip times, for use in compute_trip_result_comparison_stats."""
+    trip_itins = [trip_itins_1, trip_itins_2]
+    trip_times = [[], []]
+    for trip_id, trip in trips_by_id.iteritems():
+        for ii in range(2):
+            if trip_id not in trip_itins[ii]:
+                # This is OTP format for "trip didn't return valid result".
+                trip_times[ii].append(-1)
+            else:
+                trip_start_dt = trip_req_start_dts[trip_id]
+                ti = trip_itins[ii][trip_id]
+                trip_time_s = ti.get_total_trip_sec(trip_start_dt)
+                trip_times[ii].append(trip_time_s)
+    return trip_times[0], trip_times[1]
+
+MINUTE_BREAKS = [1, 10, 20, 30, 60, 180]
+
+def compute_trip_result_comparison_stats(otp_curr_times, otp_new_times):
+    otp_diffs = [curr - new for new, curr \
+        in zip(otp_new_times, otp_curr_times)]
+    st = {
+        'total_trips' : len(otp_curr_times),
+        'lost_trips' : 0,
+        'added_trips' : 0,
+        'valid_trips_both' : 0,
+        'faster_trips' : 0,
+        'slower_trips' : 0,
+        'same_trips' : 0,
+        'slower_total_change' : 0,
+        'faster_total_change' : 0,
+        'valid_total_curr' : 0,
+        'valid_total_new' : 0,
+        'valid_total_diff' : 0,
+        'trips_in_range' : {}
+        }
+    for min_break in MINUTE_BREAKS:
+        st['trips_in_range'][-min_break] = 0
+        st['trips_in_range'][min_break] = 0
+    st['trips_in_range']['-inf'] = 0
+    st['trips_in_range']['inf'] = 0
+        
+    for ii, (otp_curr_t, otp_new_t, otp_diff) in enumerate(zip(otp_curr_times,
+            otp_new_times, otp_diffs)):
+        if otp_curr_t <= 0 and otp_new_t <= 0:
+            # Trip is invalid in both.
+            continue
+        if otp_curr_t > 0 and otp_new_t <= 0:
+            st['lost_trips'] += 1
+        elif otp_curr_t <= 0 and otp_new_t > 0:
+            st['added_trips'] += 1
+        else:
+            st['valid_trips_both'] += 1
+            st['valid_total_curr'] += otp_curr_t 
+            st['valid_total_new'] += otp_new_t
+            st['valid_total_diff'] += otp_diff
+            abs_diff_min = abs(otp_diff / 60.0)
+            if otp_diff == 0:
+                st['same_trips'] += 1
+            elif otp_curr_t < otp_new_t: 
+                st['slower_trips'] += 1
+                st['slower_total_change'] += otp_diff
+                range_found = False
+                for min_break in MINUTE_BREAKS:
+                    if abs_diff_min <= abs(min_break):
+                        st['trips_in_range'][-min_break] += 1
+                        range_found = True
+                        break
+                if range_found == False:
+                    st['trips_in_range']["-inf"] += 1
+            elif otp_new_t < otp_curr_t:
+                st['faster_trips'] += 1
+                st['faster_total_change'] += otp_diff
+                range_found = False
+                for min_break in MINUTE_BREAKS:
+                    if abs_diff_min <= abs(min_break):
+                        st['trips_in_range'][min_break] += 1
+                        range_found = True
+                        break
+                if range_found == False:
+                    st['trips_in_range']["inf"] += 1
+    # Compute averages.
+    if st['valid_trips_both'] > 0:
+        st['avg_curr_min'] = \
+            (st['valid_total_curr'] / float(st['valid_trips_both'])) / 60.0
+        st['avg_new_min'] = \
+            (st['valid_total_new'] / float(st['valid_trips_both'])) / 60.0
+        st['avg_diff_min'] = \
+            (st['valid_total_diff'] / float(st['valid_trips_both'])) / 60.0
+        st['same_trips_pct'] = \
+            st['same_trips'] / float(st['valid_trips_both']) * 100.0
+        st['slower_trips_pct'] = \
+            st['slower_trips'] / float(st['valid_trips_both']) * 100.0
+        st['faster_trips_pct'] = \
+            st['faster_trips'] / float(st['valid_trips_both']) * 100.0
+    else:
+        st['avg_curr_min'] = 0
+        st['avg_new_min'] = 0
+        st['avg_diff_min'] = 0
+        st['same_trips_pct'] = 0
+        st['slower_trips_pct'] = 0
+        st['faster_trips_pct'] = 0
+    if st['valid_total_curr']:
+        st['avg_diff_perc'] = \
+            st['valid_total_diff'] / float(st['valid_total_curr']) * 100.0
+    else:        
+        st['avg_diff_perc'] = 0
+    if st['slower_trips']:
+        st['avg_slower'] = st['slower_total_change'] / float(st['slower_trips'])
+    else:
+        st['avg_slower'] = 0
+    if st['faster_trips']:          
+        st['avg_faster'] = st['faster_total_change'] / float(st['faster_trips'])
+    else:
+        st['avg_faster'] = 0
+    return st
+
+def print_trip_result_comparison_stats(stats_dict):
+    st = stats_dict
+    print "Total trips:-"
+    print " %d total, %d valid in both, %d only in first, %d only in second." % \
+        (st['total_trips'], st['valid_trips_both'], \
+         st['lost_trips'], st['added_trips'])
+    print "Aggregate change:-"
+    print " For trips valid in both, avg trip time changed from %.1f "\
+        "minutes to %.1f minutes.\n" \
+        " A change of %.1f min (%.2f%%)." \
+        % (st['avg_curr_min'], st['avg_new_min'], \
+           st['avg_diff_min'], st['avg_diff_perc'])
+    print "Trip breakdown:"
+    print "%5d trips (%.2f%%) of unchanged duration.\n"\
+        "%5d trips (%.2f%%) were slower (avg change of %.1f sec (%.1f min)).\n"\
+        "%5d trips (%.2f%%) were faster (avg change of %.1f sec (%.1f min))."\
+        % (st['same_trips'], st['same_trips_pct'], \
+           st['slower_trips'], st['slower_trips_pct'], \
+           st['avg_slower'], st['avg_slower'] / 60.0, \
+           st['faster_trips'], st['faster_trips_pct'], \
+           st['avg_faster'], st['avg_faster'] / 60.0 )
+    print "Detailed trip breakdown:"
+    sign_word_pairs = [(-1, "slower"), (1, "faster")]
+    for sign, speed_word in sign_word_pairs:
+        prev_tval = 0
+        for tval in MINUTE_BREAKS:
+            trips_in_range = st['trips_in_range'][sign * tval]
+            perc_in_range = trips_in_range / float(st['valid_trips_both']) * 100
+            print "%5d trips (%5.2f%%) in range (%d,%d] mins %s." % \
+                (trips_in_range, perc_in_range, prev_tval, tval, speed_word)
+            prev_tval = tval
+        inf_word = "-inf" if sign < 0 else "inf"
+        trips_in_last_range = st['trips_in_range'][inf_word]
+        print "%5d trips > %d mins %s." % \
+            (trips_in_last_range, prev_tval, speed_word)
+    print ""
+
+#####################
 
 def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_dts,
         trip_results_1, trip_results_2, shapefilename):
