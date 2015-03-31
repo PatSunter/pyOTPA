@@ -13,10 +13,8 @@ import otp_config
 #OTP_ROUTER_EPSG
 TRIP_EPSG = otp_config.OTP_ROUTER_EPSG
 
-ORIGIN = 0              # This is an ogr Point geometry coordinate, 
-                        # trip origin.
-DEST = ORIGIN+1         # This is an ogr Point geometry coordinate,
-                        # trip destination.
+ORIGIN = 0              # This is a tuple in X, Y format:- trip origin.
+DEST = ORIGIN+1         # This is a tuple in X, Y format:- trip destination.
 START_DTIME = DEST+1    # A python datetime object
 O_ZONE = START_DTIME+1  # A string representing a zone, origin
 D_ZONE = O_ZONE+1       # A string representing a zone, destination
@@ -45,7 +43,7 @@ def get_trips_srs():
 
 def print_trip(trip):
     print "trip '%s': %f,%f to %f,%f at %s ('%s'->'%s')" \
-        % (str(trip[ID]), trip[ORIGIN].GetX(), trip[ORIGIN].GetY(),
-           trip[DEST].GetX(), trip[DEST].GetY(), 
+        % (str(trip[ID]), trip[ORIGIN][0], trip[ORIGIN][1],
+           trip[DEST][0], trip[DEST][1], 
            trip[START_DTIME], trip[O_ZONE], trip[D_ZONE])
     return

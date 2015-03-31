@@ -51,8 +51,8 @@ def save_trips_to_shp_file(filename, trips,
     for trip_cnt, trip in enumerate(trips):
         trip_feat = ogr.Feature(trips_lyr.GetLayerDefn())
         trip_geom = ogr.Geometry(ogr.wkbLineString) 
-        trip_geom.AddPoint(*trip[Trip.ORIGIN].GetPoint(0))
-        trip_geom.AddPoint(*trip[Trip.DEST].GetPoint(0))
+        trip_geom.AddPoint(*trip[Trip.ORIGIN])
+        trip_geom.AddPoint(*trip[Trip.DEST])
         trip_geom.Transform(transform)
         trip_feat.SetGeometry(trip_geom)
         try:

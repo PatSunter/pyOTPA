@@ -72,23 +72,23 @@ class WithinZoneLocGenerator:
 
     def gen_loc_within_curr_zone(self):
         valid_loc_found = False
-        loc_pt = None
+        loc_geom = None
         while True:
             # First generate a random point within the extents
             loc_x = self._randomiser.uniform(self._curr_zone_env[0],
                 self._curr_zone_env[1])
             loc_y = self._randomiser.uniform(self._curr_zone_env[2],
                 self._curr_zone_env[3])
-            loc_pt = ogr.Geometry(ogr.wkbPoint)
-            loc_pt.AddPoint(loc_x, loc_y)
-            if self._curr_zone_poly.Contains(loc_pt):
+            loc_geom = ogr.Geometry(ogr.wkbPoint)
+            loc_geom.AddPoint(loc_x, loc_y)
+            if self._curr_zone_poly.Contains(loc_geom):
                 if not self.constraint_checkers:
                     valid_loc_found = True
                 else:
                     # Also check the location passes any constraints.
                     all_cc_pass = True
                     for cc in self.constraint_checkers:
-                        if not cc.is_valid(loc_pt):
+                        if not cc.is_valid(loc_geom):
                             all_cc_pass = False
                             break
                     if all_cc_pass:
@@ -97,10 +97,12 @@ class WithinZoneLocGenerator:
                 break
             else:
                 # Keep searching for a valid location ...
-                loc_pt.Destroy()
+                loc_geom.Destroy()
         assert valid_loc_found
-        # Transform to correct coordinate system
-        loc_pt.Transform(self._tform_to_trip_std_srs)
+        # Transform to correct coordinate system, extract as just an X-Y tuple
+        loc_geom.Transform(self._tform_to_trip_std_srs)
+        loc_pt = loc_geom.GetPoint_2D()
+        loc_geom.Destroy()
         return loc_pt
 
     def cleanup(self):
