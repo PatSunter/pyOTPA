@@ -5,7 +5,13 @@ import glob
 
 import TripItinerary
 
-LOAD_STATUS_PRINT_PERCENT = 5
+# min size:- percent to use
+LOAD_STATUS_PRINT_PERCENTS = [
+    (0, 20),
+    (10000, 10),
+    (50000, 5),
+    (100000, 1),
+    ]
 
 def save_trip_itineraries(output_base_dir, trip_results_by_graph):
     print "\nSaving trip itinerary results to base dir %s:" % output_base_dir
@@ -47,8 +53,17 @@ def load_trip_itineraries(output_base_dir, graph_names=None):
         else:
             print "Found %d result files in this directory." % \
                 len(trip_result_files)
-        load_count_print_inc = LOAD_STATUS_PRINT_PERCENT / 100.0 \
-            * len(trip_result_files)
+
+        n_results = len(trip_result_files)
+        print_pct = LOAD_STATUS_PRINT_PERCENTS[0]
+        pct_cat_ii = 0
+        while pct_cat_ii < len(LOAD_STATUS_PRINT_PERCENTS) \
+                and n_results > LOAD_STATUS_PRINT_PERCENTS[pct_cat_ii][0]:
+            print_pct = LOAD_STATUS_PRINT_PERCENTS[pct_cat_ii][1] 
+            pct_cat_ii += 1
+
+        load_count_print_inc = print_pct / 100.0 \
+            * n_results
         load_count_print_inc = max(1, load_count_print_inc)
         next_print_cnt = load_count_print_inc
         for ii, fname in enumerate(trip_result_files):
