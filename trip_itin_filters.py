@@ -16,6 +16,7 @@ def get_trip_ids_with_walk_leg_gr_than_dist_km(trip_results, dist_km):
 
 def get_trip_ids_with_total_time_gr_than(trip_results, trip_req_start_dts,
         comp_td):
+    assert len(trip_req_start_dts) >= len(trip_results)
     trip_ids_match_criteria = []
     for trip_id, trip_result in trip_results.iteritems():
         trip_req_start_dt = trip_req_start_dts[trip_id]
