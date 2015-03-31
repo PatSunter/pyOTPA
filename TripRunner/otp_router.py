@@ -8,9 +8,9 @@ import copy
 import time
 from datetime import datetime
 
+from pyOTPA import Trip
 from pyOTPA import otp_config
 import TripItinerary
-import trip_analysis
 
 PROGRESS_PRINT_PERCENTAGE = 1
 
@@ -108,7 +108,7 @@ def route_single_trip_multi_graphs_print_stats(server_url, routing_params,
             print "\nRouting on the %s network/timetable, Requested trip stats:" \
                 % graph_name
             ti = TripItinerary.TripItinerary(itin_json)
-            trip_analysis.print_single_trip_stats(origin_lon_lat, dest_lon_lat,
+            TripItinerary.print_single_trip_stats(origin_lon_lat, dest_lon_lat,
                 trip_req_start_dt, ti)
         else:
             print "\nRouting on the %s network/timetable trip from %s to %s "\
@@ -130,10 +130,11 @@ def route_trip_set_on_graphs(server_url, routing_params,
     else:
         trips_to_route = {}
         for trip_id, trip in trips_by_id.iteritems():
-            if not isinstance(trip[2], datetime):
-                trip_dt = datetime.combine(trip_req_start_date, trip[2])
-                trips_to_route[trip_id] = (trip[0], trip[1], trip_dt, \
-                    trip[3], trip[4], trip[5])
+            if not isinstance(trip[Trip.START_DTIME], datetime):
+                trip_dt = datetime.combine(trip_req_start_date,
+                    trip[Trip.START_DTIME])
+                trips_to_route[trip_id] = Trip.new_trip_with_updated_start(
+                    trip, trip_dt)
             else:
                 trips_to_route[trip_id] = trip
 
@@ -167,15 +168,17 @@ def route_trip_set_on_graphs(server_url, routing_params,
                     and os.path.exists(output_fname_next):
                 trips_processed += 1    
             else:
-                trip_req_start_dt = trip[2]
+                trip_req_start_dt = trip[Trip.START_DTIME]
                 trip_req_start_date = trip_req_start_dt.date()
                 trip_req_start_time = trip_req_start_dt.time()
                 res_str = None
                 retries_remain = ROUTE_RETRIES
                 while not res_str and retries_remain > 0:
                     res_str = route_trip(server_url, routing_params,
-                        trip_req_start_date, trip_req_start_time, trip[0],
-                        trip[1], otp_router_id=graph_full)
+                        trip_req_start_date, trip_req_start_time,
+                        trip[Trip.ORIGIN],
+                        trip[Trip.DEST],
+                        otp_router_id=graph_full)
                     if not res_str:
                         retries_remain -= 1
                         time.sleep(SECONDS_TO_WAIT_BEFORE_RETRY)
@@ -183,7 +186,8 @@ def route_trip_set_on_graphs(server_url, routing_params,
                     print "\tWarning:- requested trip ID %s from %s to %s at "\
                         "%s time on graph %s failed to route, after %d "\
                         "retries. "\
-                        % (str(trip_id), trip[0], trip[1], trip[2], graph_name,
+                        % (str(trip_id), trip[Trip.ORIGIN], trip[Trip.DEST],
+                           trip[Trip.START_DTIME], graph_name,
                            ROUTE_RETRIES)
                     trips_processed += 1           
                     trips_failed_to_get_result += 1
@@ -194,7 +198,8 @@ def route_trip_set_on_graphs(server_url, routing_params,
                             "%s at %s time on graph %s failed to generate "\
                             "valid itererary. "\
                             "Error msg returned by OTP router was:\n\t\t%s"\
-                            % (str(trip_id), trip[0], trip[1], trip[2],
+                            % (str(trip_id), trip[Trip.ORIGIN], trip[Trip.DEST],
+                               trip[Trip.START_DTIME],
                                graph_name, res['error']['msg'])
                         ti = None
                     else:    
@@ -208,10 +213,12 @@ def route_trip_set_on_graphs(server_url, routing_params,
                     trip_results[trip_id] = ti    
                     if ti and save_incrementally:
                         ti.save_to_file(output_fname)
-                    #print "\nTrip from %s to %s, leaving "\
-                    #    "at %s:" % (trip[0], trip[1], trip_req_start_dt)
-                    #trip_analysis.print_single_trip_stats(trip[0], trip[1],
-                    #    trip_req_start_dt, ti) 
+                    #print "\nTrip from %s to %s, leaving at %s:" \
+                    #   % (trip[Trip.ORIGIN], trip[Trip.DEST],
+                    #      trip_req_start_dt)
+                    #TripItinerary.print_single_trip_stats(
+                    #    trip[Trip.ORIGIN], trip[Trip.DEST],
+                    #    trip_req_start_dt, ti)
                     trips_routed += 1
                     trips_processed += 1
 

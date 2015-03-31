@@ -177,4 +177,48 @@ def read_trip_itin_from_file(input_fname):
     itin = TripItinerary(itin_json)
     return itin
 
+def print_single_trip_stats(origin_lon_lat, dest_lon_lat, trip_req_start_dt,
+        trip_itin):
+    ti = trip_itin
+    itin_start_dt = ti.get_start_dt()
+    itin_end_dt = ti.get_end_dt()
+    total_trip_td = ti.get_total_trip_td(trip_req_start_dt)
+    total_trip_sec = ti.get_total_trip_sec(trip_req_start_dt)
+
+    init_wait_td = ti.get_init_wait_td(trip_req_start_dt)
+    tfer_wait_td = ti.get_tfer_wait_td()
+    total_wait_td = ti.get_total_wait_td(trip_req_start_dt)
+    walk_td = ti.get_walk_td()
+    transit_td = ti.get_transit_td()
+
+    wait_pct = time_utils.get_td_pct(total_wait_td, total_trip_td)
+    walk_pct = time_utils.get_td_pct(walk_td, total_trip_td)
+    transit_pct = time_utils.get_td_pct(transit_td, total_trip_td)
+
+    dist_travelled_km = ti.get_dist_travelled_km()
+    trip_speed_along_route = ti.get_trip_speed_along_route(trip_req_start_dt)
+
+    dist_direct = geom_utils.haversine(origin_lon_lat[0], origin_lon_lat[1],
+        dest_lon_lat[0], dest_lon_lat[1])
+    trip_speed_direct = (dist_direct / 1000.0) \
+        / (total_trip_sec / (60 * 60.0))
+
+    print "Trip departs at %s" % itin_start_dt 
+    print "Trip arrives at %s" % itin_end_dt 
+    print "%s total time (inc initial wait)" % total_trip_td
+    print "  %s (%.2f%%) waiting (%s initial, %s transfers)" \
+        % (total_wait_td, wait_pct, init_wait_td, tfer_wait_td)
+    print "  %s (%.2f%%) walking (for %.2fm)" \
+        % (walk_td, walk_pct, ti.json['walkDistance'])
+    print "  %s (%.2f%%) on transit vehicles (%d transfers)" \
+        % (transit_td, transit_pct, ti.json['transfers'])
+    print "Total trip distance (as crow flies): %.2fm." % dist_direct
+    print "Total trip distance (travelled): %.2fm." \
+        % dist_travelled_km * 1000.0
+    print "(Trip directness ratio:- %.2f)" % (dist_direct / dist_travelled)
+    print "Trip speed (along route, inc. init wait): %.2fkm/h." \
+        % trip_speed_along_route
+    print "Trip speed (as crow flies, inc. init wait): %.2fkm/h." \
+        % trip_speed_direct
+    return
 

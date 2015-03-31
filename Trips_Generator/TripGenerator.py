@@ -2,6 +2,7 @@ import sys
 import operator
 from datetime import date, time, datetime
 
+from pyOTPA import Trip
 import abs_zone_io
 
 class TripGenerator:
@@ -103,8 +104,14 @@ class OD_Based_TripGenerator(TripGenerator):
         origin_loc = self._origin_loc_generator.gen_loc_within_curr_zone()
         dest_loc = self._dest_loc_generator.gen_loc_within_curr_zone()
         start_time = self._time_generator.gen_time()
-        trip = (origin_loc, dest_loc, start_time, self._curr_od[0], \
-            self._curr_od[1])
+        trip_id = str(self._curr_trip_i).zfill(len(str(self.n_trips-1)))
+        trip = Trip.new_trip(
+            origin_loc, 
+            dest_loc, 
+            start_time, 
+            self._curr_od[0],
+            self._curr_od[1],
+            trip_id)
         self._trip_i_in_od += 1
         self._curr_trip_i += 1
         return trip
@@ -248,7 +255,7 @@ class VISTA_DB_TripGenerator(TripGenerator):
         self._dest_loc_generator.update_zone(dest_ccd)
         origin_loc = self._origin_loc_generator.gen_loc_within_curr_zone()
         dest_loc = self._dest_loc_generator.gen_loc_within_curr_zone()
-        trip = (origin_loc, dest_loc, trip_start_dt, \
+        trip = Trip.new_trip(origin_loc, dest_loc, trip_start_dt, \
             origin_sla, dest_sla, trip_id)
         self._curr_trip_i += 1
 

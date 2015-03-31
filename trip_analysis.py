@@ -9,6 +9,7 @@ import copy
 from pyOTPA import geom_utils
 from pyOTPA import time_utils
 from pyOTPA import otp_config
+from pyOTPA import Trip
 
 ########################
 ## Analysis and Printing
@@ -21,51 +22,6 @@ def get_trip_speed_direct(origin_lon_lat, dest_lon_lat, trip_req_start_dt,
     trip_speed_direct = (dist_direct / 1000.0) \
         / (total_trip_sec / (60 * 60.0))
     return trip_speed_direct
-
-def print_single_trip_stats(origin_lon_lat, dest_lon_lat, trip_req_start_dt,
-        trip_itin):
-    ti = trip_itin
-    itin_start_dt = ti.get_start_dt()
-    itin_end_dt = ti.get_end_dt()
-    total_trip_td = ti.get_total_trip_td(trip_req_start_dt)
-    total_trip_sec = ti.get_total_trip_sec(trip_req_start_dt)
-
-    init_wait_td = ti.get_init_wait_td(trip_req_start_dt)
-    tfer_wait_td = ti.get_tfer_wait_td()
-    total_wait_td = ti.get_total_wait_td(trip_req_start_dt)
-    walk_td = ti.get_walk_td()
-    transit_td = ti.get_transit_td()
-
-    wait_pct = time_utils.get_td_pct(total_wait_td, total_trip_td)
-    walk_pct = time_utils.get_td_pct(walk_td, total_trip_td)
-    transit_pct = time_utils.get_td_pct(transit_td, total_trip_td)
-
-    dist_travelled_km = ti.get_dist_travelled_km()
-    trip_speed_along_route = ti.get_trip_speed_along_route(trip_req_start_dt)
-
-    dist_direct = geom_utils.haversine(origin_lon_lat[0], origin_lon_lat[1],
-        dest_lon_lat[0], dest_lon_lat[1])
-    trip_speed_direct = (dist_direct / 1000.0) \
-        / (total_trip_sec / (60 * 60.0))
-
-    print "Trip departs at %s" % itin_start_dt 
-    print "Trip arrives at %s" % itin_end_dt 
-    print "%s total time (inc initial wait)" % total_trip_td
-    print "  %s (%.2f%%) waiting (%s initial, %s transfers)" \
-        % (total_wait_td, wait_pct, init_wait_td, tfer_wait_td)
-    print "  %s (%.2f%%) walking (for %.2fm)" \
-        % (walk_td, walk_pct, ti.json['walkDistance'])
-    print "  %s (%.2f%%) on transit vehicles (%d transfers)" \
-        % (transit_td, transit_pct, ti.json['transfers'])
-    print "Total trip distance (as crow flies): %.2fm." % dist_direct
-    print "Total trip distance (travelled): %.2fm." \
-        % dist_travelled_km * 1000.0
-    print "(Trip directness ratio:- %.2f)" % (dist_direct / dist_travelled)
-    print "Trip speed (along route, inc. init wait): %.2fkm/h." \
-        % trip_speed_along_route
-    print "Trip speed (as crow flies, inc. init wait): %.2fkm/h." \
-        % trip_speed_direct
-    return
 
 def calc_mean_total_time(trip_itins, trip_req_start_dts):
     sum_val = sum(itertools.imap(
@@ -317,7 +273,9 @@ def print_mean_results(mean_results_by_category, key_print_order=None):
         
     for key in keys:
         means = mean_results_by_category[key]
-        if not means: continue
+        if not means:
+            print "  '%s': no results." % key
+            continue     
         print "  '%s': %d trips, mean trip time %s, mean dist travelled "\
             "%.2fkm, direct speed %.2f km/h, "\
             "walk dist %.2fm, # of transfers %.1f" % \
@@ -357,7 +315,7 @@ def categorise_trip_results_by_od_sla(trip_itins, trips_by_id):
     trips_by_od_sla = {}
     for trip_id, trip_itin in trip_itins.iteritems():
         trip = trips_by_id[trip_id]
-        o_sla, d_sla = trip[3], trip[4]
+        o_sla, d_sla = trip[Trip.O_ZONE], trip[Trip.D_ZONE]
         if o_sla not in trips_by_od_sla:
             trips_by_od_sla[o_sla] = {}
         if d_sla not in trips_by_od_sla[o_sla]:
@@ -472,11 +430,11 @@ def calc_save_trip_info_by_mode_agency_route(trip_itins, trip_req_start_dts, out
 def get_trip_req_start_dts(trips_by_id, trip_req_start_date):
     trip_req_start_dts = {}
     for trip_id, trip in trips_by_id.iteritems():
-        if isinstance(trip[2], datetime):
-            trip_req_start_dts[trip_id] = trip[2]
+        if isinstance(trip[Trip.START_DTIME], datetime):
+            trip_req_start_dts[trip_id] = trip[Trip.START_DTIME]
         else:
             trip_req_start_dts[trip_id] = datetime.combine(trip_req_start_date,
-                trip[2])
+                trip[Trip.START_DTIME])
     return trip_req_start_dts
 
 def get_trips_subset_by_ids(trip_results_dict, trip_ids_to_select):
@@ -511,6 +469,10 @@ def calc_means_of_tripset_by_first_non_walk_mode(trip_results_by_graph,
     trips_by_first_non_walk_mode = {}
     means_by_first_non_walk_mode = {}
     for graph_name, trip_results in trip_results_by_graph.iteritems():
+        if not trip_results:
+            trips_by_first_non_walk_mode[graph_name] = None
+            means_by_first_non_walk_mode[graph_name] = None
+            continue
         # Further classify by first non-walk mode
         trips_by_first_non_walk_mode[graph_name] = \
             categorise_trip_ids_by_first_non_walk_mode(trip_results)
@@ -563,6 +525,7 @@ def calc_print_mean_results_agg_by_mode_agency(
     means_tfer_waits = {}
     for graph_name in graph_names:
         trip_results = trip_results_by_graph[graph_name]
+        if not trip_results: continue
         sum_modes_in_trips[graph_name] = \
             calc_num_trips_using_modes(trip_results)
         sum_legs_by_mode[graph_name] = \
@@ -588,6 +551,7 @@ def calc_print_mean_results_agg_by_mode_agency(
             calc_mean_tfer_waits(trip_results)
     
     for graph_name, trip_results in trip_results_by_graph.iteritems():
+        if not trip_results: continue
         miw_by_mode, ciw_by_mode = \
             calc_mean_init_waits_by_mode(trip_results,
                 trip_req_start_dts)
@@ -603,6 +567,7 @@ def calc_print_mean_results_agg_by_mode_agency(
     for graph_name in graph_names:
         # Further classify by agencies used
         trip_results = trip_results_by_graph[graph_name]
+        if not trip_results: continue
         trips_by_agencies_used[graph_name] = \
             categorise_trips_by_agencies_used(trip_results)
         means_by_agencies_used[graph_name] = {}
@@ -618,6 +583,10 @@ def calc_print_mean_results_agg_by_mode_agency(
         extra_string = ""
     print "\nTrip results%s: aggregated by mode were:" % extra_string
     for graph_name in graph_names:
+        trip_results = trip_results_by_graph[graph_name]
+        if not trip_results: 
+            print "(Graph %s had no results - skipping.)" % graph_name
+            continue
         print "For graph %s, aggregated results for mode use were:" \
             % graph_name
         print "  mode, mean time (all trips), mean dist (all trips), "\
@@ -728,14 +697,22 @@ def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
 
     means_by_deptime = {}
     for graph_name in graph_names:
+        trip_results = trip_results_by_graph[graph_name]
+        if not trip_results:
+            means_by_deptime[graph_name] = None
+            continue
         means_by_deptime[graph_name] = {}
-        trip_results_graph = trip_results_by_graph[graph_name]
         for dep_time_cat, dt_info in dep_time_cats.iteritems():
             trip_results_for_dep_time_cat = get_results_in_dep_time_range(
-                trip_results_graph, trip_req_start_dts, dt_info)
-            means_by_deptime[graph_name][dep_time_cat] = calc_means_of_tripset(
-                trip_results_for_dep_time_cat, trips_by_id,
-                trip_req_start_dts)
+                trip_results, trip_req_start_dts, dt_info)
+            if trip_results_for_dep_time_cat:
+                means_by_deptime[graph_name][dep_time_cat] = \
+                    calc_means_of_tripset(
+                        trip_results_for_dep_time_cat, trips_by_id,
+                        trip_req_start_dts)
+            else:
+                # In case there's no results in that time period
+                means_by_deptime[graph_name][dep_time_cat] = None
 
     if description:
         extra_string = " (%s)" % description
@@ -745,6 +722,9 @@ def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
         % (max(map(len, trip_results_by_graph.itervalues())), extra_string)
     for graph_name in graph_names:
         print "For graph name '%s':" % graph_name
+        if not trip_results_by_graph[graph_name]:
+            print "(No results)."
+            continue
         print_mean_results(means_by_deptime[graph_name], dep_time_print_order)
     return        
 
@@ -812,16 +792,16 @@ def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_dts,
         case1time = trip_res_1.get_total_trip_sec(trip_req_start_dt)
         case2time = trip_res_2.get_total_trip_sec(trip_req_start_dt)
         linester = ogr.Geometry(ogr.wkbLineString)
-        linester.AddPoint(*trip[0])
-        linester.AddPoint(*trip[1])
+        linester.AddPoint(*trip[Trip.ORIGIN])
+        linester.AddPoint(*trip[Trip.DEST])
 
         featureDefn = layer.GetLayerDefn()
         feature = ogr.Feature(featureDefn)
         feature.SetGeometry(linester)
         feature.SetField('TripId', str(trip_id))
-        feature.SetField('DepTime', trip[2].strftime('%H:%M:%S'))
-        feature.SetField('OriginZ', trip[3])
-        feature.SetField('DestZ', trip[4])
+        feature.SetField('DepTime', trip[Trip.START_DTIME].strftime('%H:%M:%S'))
+        feature.SetField('OriginZ', trip[Trip.O_ZONE])
+        feature.SetField('DestZ', trip[Trip.D_ZONE])
         feature.SetField(c1TimeFieldName, case1time)
         feature.SetField(c2TimeFieldName, case2time)
         diff = case1time - case2time

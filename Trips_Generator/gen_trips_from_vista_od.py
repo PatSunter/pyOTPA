@@ -4,6 +4,7 @@ import os.path
 from datetime import time
 from osgeo import ogr, osr
 
+from pyOTPA import Trip
 import TimeGenerator
 import LocGenerator
 import LocConstraintChecker
@@ -25,7 +26,6 @@ def main():
     RANDOM_TIME_SEED = 5
     RANDOM_ORIGIN_SEED = 5
     RANDOM_DEST_SEED = 10
-    OUTPUT_EPSG=4326
 
     #MELB_BBOX = ((144.765, -37.9), (145.36, -37.645))
     #origin_loc_gen = BasicRandomLocGenerator(RANDOM_ORIGIN_SEED, MELB_BBOX)
@@ -97,8 +97,9 @@ def main():
         if not trip: break
         trips.append(trip)
         print "%f,%f to %f,%f at %s ('%s'->'%s')" \
-            % (trip[0].GetX(), trip[0].GetY(), \
-               trip[1].GetX(), trip[1].GetY(), trip[2], trip[3], trip[4])
+            % (trip[Trip.ORIGIN].GetX(), trip[Trip.ORIGIN].GetY(), \
+               trip[Trip.DEST].GetX(), trip[Trip.DEST].GetY(),
+               trip[Trip.START_DTIME], trip[Trip.O_ZONE], trip[Trip.D_ZONE])
     print "Generated %d trips." % len(trips)
     #print "Origin SLAs were as follows:"
     #for sla in origin_slas: print sla
@@ -107,9 +108,9 @@ def main():
 
     trip_generator.cleanup()
 
-    trips_srs = sla_lyr.GetSpatialRef()
+    trips_srs = Trip.get_trips_srs()
     output_srs = osr.SpatialReference()
-    output_srs.ImportFromEPSG(OUTPUT_EPSG)
+    output_srs.ImportFromEPSG(trips_io.DEFAULT_OUTPUT_EPSG)
     trips_io.save_trips_to_shp_file(trips_output_shpfilename,
         trips, trips_srs, output_srs)
 

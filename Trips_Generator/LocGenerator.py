@@ -1,6 +1,8 @@
 import random
 from osgeo import ogr, osr
 
+from pyOTPA import Trip
+
 class LocGenerator:
     def initialise(self):
         return
@@ -31,9 +33,15 @@ class WithinZoneLocGenerator:
         self._random_seed = seed
         self._zone_polys_dict = zone_polys_dict
         self.constraint_checkers = constraint_checkers
+        self._tform_to_trip_std_srs = None
         self._curr_zone = None
 
     def initialise(self):
+        trips_srs = Trip.get_trips_srs()
+        first_zone_poly = self._zone_polys_dict.itervalues().next()
+        zone_polys_srs = first_zone_poly.GetGeometryRef().GetSpatialReference()
+        self._tform_to_trip_std_srs = osr.CoordinateTransformation(
+            zone_polys_srs, trips_srs)
         self._curr_zone = None
         self._randomiser = random.Random(self._random_seed)
         if self.constraint_checkers:
@@ -90,6 +98,9 @@ class WithinZoneLocGenerator:
             else:
                 # Keep searching for a valid location ...
                 loc_pt.Destroy()
+        assert valid_loc_found
+        # Transform to correct coordinate system
+        loc_pt.Transform(self._tform_to_trip_std_srs)
         return loc_pt
 
     def cleanup(self):
