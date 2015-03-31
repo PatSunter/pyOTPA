@@ -8,9 +8,9 @@ import copy
 import time
 from datetime import datetime
 
-from pyOTPA import Trip
 from pyOTPA import otp_config
-import TripItinerary
+from pyOTPA import Trip
+from pyOTPA import TripItinerary
 
 PROGRESS_PRINT_PERCENTAGE = 1
 

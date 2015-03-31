@@ -5,9 +5,9 @@ import os.path
 import json
 from datetime import datetime, date, time
 
+from pyOTPA import trips_io
+from pyOTPA import trip_itins_io
 from TripRunner import otp_router
-from TripRunner import trip_itins_io
-from Trips_Generator import trips_io
 
 def main():
     SERVER_URL = 'http://130.56.248.56'

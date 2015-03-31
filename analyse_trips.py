@@ -6,8 +6,8 @@ from optparse import OptionParser
 from osgeo import ogr
 
 import otp_config
-from pyOTPA.Trips_Generator import trips_io
-from pyOTPA.TripRunner import trip_itins_io
+from pyOTPA import trips_io
+from pyOTPA import trip_itins_io
 import trip_analysis
 import trip_filters
 import trip_itin_filters
