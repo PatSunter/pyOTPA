@@ -1,0 +1,8 @@
+Name,Mon,Tues,Wed,Thu,Fri,Sat,Sun,Time_Start,Time_Stop
+weekday_morning_early,1,1,1,1,1,0,0,04:00:00,07:00:00
+weekday_morning_peak,1,1,1,1,1,0,0,07:00:00,10:00:00
+weekday_interpeak,1,1,1,1,1,0,0,10:00:00,16:00:00
+weekday_arvo_peak,1,1,1,1,1,0,0,16:00:00,18:30:00
+weekday_evening,1,1,1,1,1,0,0,18:30:00,23:59:59
+saturday,0,0,0,0,0,1,0,00:00:00,23:59:59
+sunday,0,0,0,0,0,0,1,00:00:00,23:59:59

@@ -19,6 +19,8 @@ def main():
         help='Base dir of trip results to analyse.')
     parser.add_option('--trips_shpfile', dest='trips_shpfile',
         help='Name of shapefile containing specified trips.')
+    parser.add_option('--dep_times_csv', dest='dep_times_csv',
+        help='Path of CSV file containing departure time categories to sort into.')
     parser.add_option('--trips_date', dest='trips_date',
         help='Departure date of trips. Must be in a format of YYYY-MM-DD.')
     parser.add_option('--analyse_graphs', dest='analyse_graphs',
@@ -48,6 +50,14 @@ def main():
     #    parser.print_help()
     #    parser.error("No trip departure date provided.")
     trip_req_start_date = None
+    dep_times_csv_fname = options.dep_times_csv
+    if not dep_times_csv_fname or not os.path.exists(dep_times_csv_fname):
+        parser.print_help()
+        parser.error("No provided departure time categories CSV file.")
+    if not os.path.exists(dep_times_csv_fname):
+        parser.print_help()
+        parser.error("Provided departure time categories CSV file %s "
+            "doesn't exist." % dep_times_csv_fname)
     if options.trips_date:
         trips_date_str = options.trips_date
         try:
@@ -68,27 +78,8 @@ def main():
     if options.analyse_graphs:
         graph_names = options.analyse_graphs.split(',')
 
-    # TODO:- really should be reading these in from CSV - and saving results
-    # likewise.
-    dep_time_cats = {}
-    dep_time_cats['weekday_morning_early'] = ([0,1,2,3,4],
-        time(4,00), time(7,00))
-    dep_time_cats['weekday_morning_peak'] = ([0,1,2,3,4],
-        time(7,00), time(10,00))
-    dep_time_cats['weekday_interpeak'] = ([0,1,2,3,4],
-        time(10,00), time(16,00))
-    dep_time_cats['weekday_arvo_peak'] = ([0,1,2,3,4],
-        time(16,00), time(18,30))
-    dep_time_cats['weekday_evening'] = ([0,1,2,3,4],
-        time(18,30), time(23,59,59))
-    dep_time_cats['saturday'] = ([5],
-        time(0,00), time(23,59,59))
-    dep_time_cats['sunday'] = ([6],
-        time(0,00), time(23,59,59))
-    dep_time_print_order = [
-        'weekday_morning_early', 'weekday_morning_peak',
-        'weekday_interpeak', 'weekday_arvo_peak', 'weekday_evening',
-        'saturday', 'sunday']
+    dep_time_cats, dep_time_order = \
+        trip_itin_filters.read_trip_deptime_categories(dep_times_csv_fname)
 
     trips_by_id, trips = \
         trips_io.read_trips_from_shp_file_otp_srs(
@@ -200,7 +191,7 @@ def main():
         description=def_desc,
         output_file_base=os.path.join(output_base_dir, 
             "means_by_deptime"),
-        dep_time_print_order=dep_time_print_order)
+        dep_time_print_order=dep_time_order)
 
     trip_analysis.calc_save_mean_results_by_dep_times(
         trip_results_by_graph.keys(), trip_results_by_graph_filtered, 
@@ -208,7 +199,7 @@ def main():
         description=filtered_desc,
         output_file_base=os.path.join(output_base_dir, 
             "means_by_deptime-filtered"),
-        dep_time_print_order=dep_time_print_order)
+        dep_time_print_order=dep_time_order)
 
     print "Saving info for individual routes (on filtered trips) to files:"
     for graph_name in trip_results_by_graph.keys():
