@@ -50,7 +50,7 @@ class WithinZoneLocGenerator:
                 # will be generated in here.
                 cc.initialise(zone_polys_srs)
     
-    def update_zone(self, zone_name):
+    def update_zone(self, zone_name, total_trip_cnt_zone):
         if self._curr_zone == zone_name:
             # Nothing to do.
             return
@@ -65,7 +65,8 @@ class WithinZoneLocGenerator:
         self._curr_zone_env = self._curr_zone_poly.GetEnvelope()
         if self.constraint_checkers:
             for cc in self.constraint_checkers:
-                cc.update_region(zone_name, self._curr_zone_poly)
+                cc.update_region(zone_name, self._curr_zone_poly,
+                    total_trip_cnt_zone)
         return
         
     def gen_loc_within_zone(self, zone_name):

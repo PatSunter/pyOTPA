@@ -25,6 +25,8 @@ class OD_Based_TripGenerator(TripGenerator):
         self._od_counts_total = sum(od_counts.itervalues())
         self._ordered_ods = sorted(od_counts.iterkeys())
         self._od_counts_scaled = None
+        self._origin_counts_scaled = None
+        self._dest_counts_scaled = None
         self._assign_fully = assign_fully
         self._origin_loc_generator = origin_loc_generator
         self._dest_loc_generator = dest_loc_generator
@@ -71,6 +73,18 @@ class OD_Based_TripGenerator(TripGenerator):
                 trips_assigned += 1
         print "...assigned %d trips." \
             % (sum(self._od_counts_scaled.itervalues()))
+        self._origin_counts_scaled = {}
+        self._dest_counts_scaled = {}
+        for o_d, count in self._od_counts_scaled.iteritems():
+            origin, dest = o_d
+            if origin not in self._origin_counts_scaled:
+                self._origin_counts_scaled[origin] = count
+            else:
+                self._origin_counts_scaled[origin] += count
+            if dest not in self._dest_counts_scaled:
+                self._dest_counts_scaled[dest] = count
+            else:
+                self._dest_counts_scaled[dest] += count
         return
 
     def update_zones(self, od_pair):
@@ -79,8 +93,10 @@ class OD_Based_TripGenerator(TripGenerator):
         if self._scaled_trips_in_curr_od > 0:
             print "Updating to generate %d trips between ODs '%s' and '%s'" \
                 % (self._scaled_trips_in_curr_od, od_pair[0], od_pair[1])
-            self._origin_loc_generator.update_zone(self._curr_od[0])
-            self._dest_loc_generator.update_zone(self._curr_od[1])
+            self._origin_loc_generator.update_zone(self._curr_od[0],
+                self._origin_counts_scaled[od_pair[0]])
+            self._dest_loc_generator.update_zone(self._curr_od[1],
+                self._dest_counts_scaled[od_pair[1]])
             self._time_generator.update_zones(self._curr_od,
                 self._scaled_trips_in_curr_od)
         else:
@@ -251,8 +267,8 @@ class VISTA_DB_TripGenerator(TripGenerator):
             print "Error while trying to create the start time for VISTA "\
                 "trip with ID %s:- %s" % (trip_id, e)
             sys.exit(1)    
-        self._origin_loc_generator.update_zone(origin_ccd)
-        self._dest_loc_generator.update_zone(dest_ccd)
+        self._origin_loc_generator.update_zone(origin_ccd, 1)
+        self._dest_loc_generator.update_zone(dest_ccd, 1)
         origin_loc = self._origin_loc_generator.gen_loc_within_curr_zone()
         dest_loc = self._dest_loc_generator.gen_loc_within_curr_zone()
         trip = Trip.new_trip(origin_loc, dest_loc, trip_start_dt, \
