@@ -174,8 +174,9 @@ def get_index_entries_of_geom(gridded_index, geom, find_mode=False):
     partially_within_levels = []
     partially_within_parent_indices = []
     start_level = 1
-    indexes_to_search = zip(gridded_index.keys(), gridded_index.values(),
-        itertools.repeat(start_level), itertools.repeat(gridded_index))
+    indexes_to_search = \
+        zip(gridded_index.keys(), gridded_index.values(),
+            itertools.repeat(start_level), itertools.repeat(gridded_index))
     while indexes_to_search:
         index_bbox, index_entries_at_level, curr_level, parent_index = \
             indexes_to_search.pop()
@@ -192,13 +193,7 @@ def get_index_entries_of_geom(gridded_index, geom, find_mode=False):
                     #if not find_mode or len(sub_index_entry):
                     #    new_entries.append((sub_bbox, sub_index_entry, 
                     #         sub_level, sub_dict))
-
-                #indexes_to_search.extend(new_entries)
-                # OK: we only need to add/find a shape to _one_ bbox,
-                # even if its partially within multiple:-
-                # since we're always going to search
-                # through the tree in the same order.
-                indexes_to_search = new_entries
+                indexes_to_search.extend(new_entries)
             else:
                 partially_within_bboxes.append(index_bbox)
                 partially_within_indexes.append(index_entries_at_level)
@@ -283,4 +278,26 @@ def get_shp_geom_is_within_using_index(gridded_index, geom):
             # Remember, if we broke out of an inner loop after finding a
             # valid shp, can break here too.
             break
+    if not shp_within:
+        # This import is a bit of a hack here.
+        from pyOTPA.Trips_Generator import abs_zone_io
+        cand_shapes = []
+        cand_shape_bboxes = []
+        cand_shape_ccds = []
+        for found_index in found_indexes:
+            for shp, shp_bbox in found_index:
+                cand_shapes.append(shp)
+                cand_shape_bboxes.append(shp_bbox)
+                cand_shape_ccds.append(
+                    shp.GetField(abs_zone_io.CCD_CODE_FIELD))
+        print "Warning:- found requested geom %s was within %d of the "\
+            "spatial index boxes (with bboxes %s).\nHowever didn't "\
+            "find the geom to be within any of the %d shapes in these "\
+            "index boxes (with bboxes %s, and CCD codes %s).\n"\
+            "Is it outside the known region, or in "\
+            "a different SRS to the index?" \
+            % (geom.ExportToWkt(), len(found_indexes), found_bboxes,
+               len(cand_shapes), cand_shape_bboxes, cand_shape_ccds)
+        #import pdb
+        #pdb.set_trace()
     return shp_within
