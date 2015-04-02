@@ -87,8 +87,8 @@ def get_trip_ids_near_network_stops(trip_dict, network_layers, test_dist_m,
     if not candidate_trip_ids:
         candidate_trip_ids = trip_dict.iterkeys()
 
-    trips_srs = osr.SpatialReference()
-    trips_srs.ImportFromEPSG(otp_config.OTP_ROUTER_EPSG)
+    trips_srs = Trip.get_trips_srs()
+
     tform_latlon_to_comp = osr.CoordinateTransformation(
         trips_srs, comp_srs)
     for trip_id in candidate_trip_ids:

@@ -3,9 +3,12 @@ match the criteria."""
 
 import csv
 from datetime import time, datetime
+from osgeo import ogr, osr
 
+from pyOTPA import geom_utils
 from pyOTPA import otp_config
 from pyOTPA import Trip
+from pyOTPA.Trips_Generator import abs_zone_io
 
 # Filters that rely on trip itinerary results
 DEFAULT_LONGEST_WALK_LEN_KM = 1.2
@@ -77,6 +80,76 @@ def categorise_trip_results_by_od_sla(trip_itins, trips_by_id):
             trips_by_od_sla[o_sla][d_sla] = {}
         trips_by_od_sla[o_sla][d_sla][trip_id] = trip_itin
     return trips_by_od_sla
+
+def get_trip_origin_dest_ccd(trip, ccds_index, tform_trips_srs_to_ccds_srs):
+    o_geom = ogr.Geometry(ogr.wkbPoint)
+    d_geom = ogr.Geometry(ogr.wkbPoint)
+    o_geom.AddPoint(*trip[Trip.ORIGIN])
+    d_geom.AddPoint(*trip[Trip.DEST])
+    o_geom.Transform(tform_trips_srs_to_ccds_srs)
+    d_geom.Transform(tform_trips_srs_to_ccds_srs)
+    o_ccd, d_ccd = None, None
+    o_shp = geom_utils.get_shp_geom_is_within_using_index(ccds_index, o_geom)
+    d_shp = geom_utils.get_shp_geom_is_within_using_index(ccds_index, d_geom)
+    if o_shp:
+        o_ccd = o_shp.GetField(abs_zone_io.CCD_CODE_FIELD)
+    if d_shp:
+        d_ccd = d_shp.GetField(abs_zone_io.CCD_CODE_FIELD)
+
+    #o_ccd, d_ccd = None, None
+    #for ccd_code, ccd_shp in ccd_code_to_shp_map.iteritems():
+    #    ccd_geom = ccd_shp.GetGeometryRef()
+    #    if ccd_geom.Contains(o_geom):
+    #        o_ccd = ccd_code
+    #    if ccd_geom.Contains(d_geom):
+    #        d_ccd = ccd_code
+    #    if o_ccd and d_ccd:
+    #        break
+    o_geom.Destroy()
+    d_geom.Destroy()
+    return o_ccd, d_ccd
+
+def categorise_trip_results_by_od_ccd(trip_itins, trips_by_id, ccds_index,
+        ccds_srs, saved_trip_id_ccds_map):
+    print "Categorising trip results by Origin CCD and Dest CCD "\
+        "(%d trips) ..." % (len(trip_itins))
+    trips_by_od_ccd = {}
+    cnt = 0
+    ccds_spatial_index = ccds_index
+    trips_srs = Trip.get_trips_srs()
+    tform_trip_srs_to_ccd_srs = osr.CoordinateTransformation(
+        trips_srs, ccds_srs)
+    for trip_id, trip_itin in trip_itins.iteritems():
+        trip = trips_by_id[trip_id]
+        saved_ccd_pair = saved_trip_id_ccds_map.get(trip_id)
+        if saved_ccd_pair:
+            o_ccd, d_ccd = saved_ccd_pair
+        else:
+            o_ccd, d_ccd = get_trip_origin_dest_ccd(trip, ccds_spatial_index,
+                tform_trip_srs_to_ccd_srs)
+            if o_ccd == None:
+                o_ccd = "unknown"
+            if d_ccd == None:
+                d_ccd = "unknown"
+            saved_trip_id_ccds_map[trip_id] = o_ccd, d_ccd
+        if o_ccd not in trips_by_od_ccd:
+            trips_by_od_ccd[o_ccd] = {}
+        if d_ccd not in trips_by_od_ccd[o_ccd]:
+            trips_by_od_ccd[o_ccd][d_ccd] = {}
+        trips_by_od_ccd[o_ccd][d_ccd][trip_id] = trip_itin
+        cnt += 1
+        #if cnt % 10 == 0:
+        #    print "...done %d trip ids." % cnt
+    print "...finished classifying."
+    if geom_utils.POTENTIAL_SHP_BBOX_TESTS:
+        print "(potential max bbox tests was %d, actual bbox tests was %d, "\
+            "Contains tests was %d, passed Contains tests was %d)" \
+            % (geom_utils.POTENTIAL_SHP_BBOX_TESTS,
+               geom_utils.ACTUAL_SHP_BBOX_TESTS,
+               geom_utils.ACTUAL_CONTAINS_TESTS,
+               geom_utils.PASSED_CONTAINS_TESTS)
+
+    return trips_by_od_ccd
 
 def categorise_trip_ids_by_mode_agency_route(trip_itins):
     trips_by_mar = {}

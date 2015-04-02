@@ -620,6 +620,28 @@ def calc_save_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts,
         ['Origin SLA', 'Dest SLA'], output_fname)
     return means_by_od_sla
 
+def calc_trip_info_by_OD_CCD(trip_itins, trips_by_id, trip_req_start_dts,
+        ccds_index, ccds_srs, saved_trip_id_ccds_map):
+    """Note: ccds_index should have been build already using function
+    geom_utils.build_and_populate_gridded_spatial_index()"""    
+    tripsets_by_od_ccd = trip_itin_filters.categorise_trip_results_by_od_ccd(
+        trip_itins, trips_by_id, ccds_index, ccds_srs, saved_trip_id_ccds_map)
+    means_by_od_ccd = {}
+    for o_ccd, tripsets_by_dest_ccd in tripsets_by_od_ccd.iteritems():
+        means_by_od_ccd[o_ccd] = {}
+        for d_ccd, trip_itins in tripsets_by_dest_ccd.iteritems():
+            means_by_od_ccd[o_ccd][d_ccd] = calc_means(
+                trip_itins, trips_by_id, trip_req_start_dts)
+    return means_by_od_ccd
+
+def calc_save_trip_info_by_OD_CCD(trip_itins, trips_by_id, trip_req_start_dts,
+        ccds_index, ccds_srs, output_fname):
+    means_by_od_ccd = calc_trip_info_by_OD_CCD(trip_itins, trips_by_id, 
+        trip_req_start_dts, ccds_index, ccds_srs)
+    save_trip_result_means_to_csv(means_by_od_ccd,
+        ['Origin CCD', 'Dest CCD'], output_fname)
+    return means_by_od_ccd
+
 def calc_means_by_dep_times(trip_results, trips_by_id,
         trip_req_start_dts, dep_time_cats):
     means_by_deptime = {}

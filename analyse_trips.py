@@ -6,12 +6,14 @@ from optparse import OptionParser
 from osgeo import ogr
 
 from pyOTPA import otp_config
+from pyOTPA import geom_utils
 from pyOTPA import Trip
 from pyOTPA import trips_io
 from pyOTPA import trip_itins_io
 from pyOTPA import trip_analysis
 from pyOTPA import trip_filters
 from pyOTPA import trip_itin_filters
+from pyOTPA.Trips_Generator import abs_zone_io
 
 ALL_TRIPS_DESC = "all_trips"
 BASE_FILTER_DESC = "filtered"
@@ -64,7 +66,7 @@ def trips_near_upgraded_networks(
 
 def process_one_graph_results(trips_by_id, trip_req_start_dts,
         output_base_dir, graph_name, dep_time_cats, dep_time_order,
-        imp_network_stop_lyrs):
+        imp_network_stop_lyrs, ccds_index, ccds_srs, saved_trip_id_ccds_map):
     """Split out into a separate function to save memory by processing each
     graph's results one at a time."""
 
@@ -98,7 +100,7 @@ def process_one_graph_results(trips_by_id, trip_req_start_dts,
             trips_by_id, trip_req_start_dts, trip_results[ALL_TRIPS_DESC])
     subset_ids[subset_desc] = subset_ids_list 
     subset_descs_long[subset_desc] = filter_desc_long
-    print "  calc subset of trips close to improved networks:"\
+    print "  calc subset of trips close to improved networks:"
     subset_ids_list, subset_desc, filter_desc_long = \
         trips_near_upgraded_networks(
             trips_by_id, trip_req_start_dts, trip_results[ALL_TRIPS_DESC],
@@ -143,6 +145,11 @@ def process_one_graph_results(trips_by_id, trip_req_start_dts,
         means[desc]['by_OD_SLA'] = \
             trip_analysis.calc_trip_info_by_OD_SLA(
                 trip_results[desc], trips_by_id, trip_req_start_dts)
+
+        means[desc]['by_OD_CCD'] = \
+            trip_analysis.calc_trip_info_by_OD_CCD(
+                trip_results[desc], trips_by_id, trip_req_start_dts,
+                ccds_index, ccds_srs, saved_trip_id_ccds_map)
 
     print "...done calculating."
 
@@ -194,6 +201,12 @@ def process_one_graph_results(trips_by_id, trip_req_start_dts,
         print "  %s" % output_fname
         trip_analysis.save_trip_result_means_to_csv(means[desc]['by_OD_SLA'],
             ['Origin SLA', 'Dest SLA'], output_fname)
+        output_fname = os.path.join(output_base_dir, 
+            "means-%s-%s-%s.csv" % ('by_OD_CCD',
+                graph_name, desc))
+        print "  %s" % output_fname
+        trip_analysis.save_trip_result_means_to_csv(means[desc]['by_OD_CCD'],
+            ['Origin CCD', 'Dest CCD'], output_fname)
     print "...done saving."
 
     return trip_summary_results, means, usages, subset_ids, subset_descs_long
@@ -204,6 +217,8 @@ def main():
         help="Base dir of trip results to analyse.")
     parser.add_option('--trips_shpfile', dest='trips_shpfile',
         help="Name of shapefile containing specified trips.")
+    parser.add_option('--ccds_shpfile', dest='ccds_shpfile',
+        help="Name of shapefile containing CCD polygons.")
     parser.add_option('--dep_times_csv', dest='dep_times_csv',
         help="Path of CSV file containing departure time categories "\
             "to sort into.")
@@ -231,6 +246,10 @@ def main():
     if not trips_shpfilename:
         parser.print_help()
         parser.error("no provided trips shpfile path.")
+    ccds_shpfilename = options.ccds_shpfile
+    if not ccds_shpfilename:
+        parser.print_help()
+        parser.error("no provided ccds shpfile path.")
     #if not options.trips_date:
     #    parser.print_help()
     #    parser.error("No trip departure date provided.")
@@ -273,6 +292,20 @@ def main():
     trip_req_start_dts = Trip.get_trip_req_start_dts(
         trips_by_id, trip_req_start_date)
 
+    ccds_shpfilename
+    ccds_shp = ogr.Open(ccds_shpfilename)
+    ccds_lyr = ccds_shp.GetLayer(0)
+    #ccds_index = geom_utils.build_and_populate_gridded_spatial_index(
+    #    ccds_lyr, 9, 2)
+    #ccds_index = \
+    #    geom_utils.build_and_populate_gridded_spatial_index_dynamic_splitting(
+    #    ccds_lyr, max_levels=11, grid_per_level=2, target_count_per_cell=3)
+    ccds_index = \
+        geom_utils.build_and_populate_gridded_spatial_index_dynamic_splitting(
+        ccds_lyr, max_levels=10, grid_per_level=2, target_count_per_cell=10)
+    ccds_srs = ccds_lyr.GetSpatialRef()
+    saved_trip_id_ccds_map = {}
+
     # Also create a separate filtered list of trips within a target distance
     # from the routes. 
     print "Loading improved network shapefiles for creating "\
@@ -301,7 +334,8 @@ def main():
         trip_summary_results, means, usages, subset_ids, subset_descs_long = \
             process_one_graph_results(
                 trips_by_id, trip_req_start_dts, output_base_dir, gn,
-                dep_time_cats, dep_time_order, imp_network_stop_lyrs)
+                dep_time_cats, dep_time_order, imp_network_stop_lyrs,
+                ccds_index, ccds_srs, saved_trip_id_ccds_map)
         trip_summary_results_by_graph[gn] = trip_summary_results
         means_by_graph[gn] = means
         usage_by_graph[gn] = usages
@@ -378,6 +412,7 @@ def main():
     tram_stops_shp.Destroy()
     smartbus_stops_shp.Destroy()
     upg_bus_stops_shp.Destroy()
+    ccds_shp.Destroy()
     return
 
 if __name__ == "__main__":
