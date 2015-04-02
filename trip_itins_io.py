@@ -32,16 +32,21 @@ def save_trip_itineraries(output_base_dir, trip_results_by_graph):
             % (saved_valid_cnt, len(trip_results), graph_name, subdir)
     return
 
+def read_graph_names(output_base_dir):
+    # Calculate these based on all sub-directories of output dir.
+    graph_names = []
+    for entry in os.listdir(output_base_dir):
+        if os.path.isdir(os.path.join(output_base_dir, entry)):
+            graph_names.append(entry)
+    return graph_names
+
 def load_trip_itineraries(output_base_dir, graph_names=None):
     print "\nLoading trip itinerary results from base dir %s:" \
         % output_base_dir
     trip_results_by_graph = {}
     if not graph_names:
-        # Calculate these based on all sub-directories of output dir.
-        graph_names = []
-        for entry in os.listdir(output_base_dir):
-            if os.path.isdir(os.path.join(output_base_dir, entry)):
-                graph_names.append(entry)
+        graph_names = read_graph_names(output_base_dir)
+
     for graph_name in graph_names:
         print "Loading results for graph %s" % graph_name
         trip_results = {}

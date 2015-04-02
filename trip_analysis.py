@@ -225,7 +225,7 @@ def calc_mean_modal_speeds(trip_itins):
             means_modal_speeds[mode] = None
     return means_modal_speeds
 
-def calc_means_of_tripset(trip_results, trips_by_id, trip_req_start_dts):
+def calc_means(trip_results, trips_by_id, trip_req_start_dts):
     assert len(trip_results) > 0
     means = {}
     means['n trips'] = len(trip_results)
@@ -318,8 +318,24 @@ def calc_save_trip_info_by_mode_agency_route(trip_itins, trip_req_start_dts, out
     csv_file.close()
     return
 
-def calc_means_of_tripset_by_first_non_walk_mode(trip_results_by_graph,
-    trips_by_id, trip_req_start_dts):
+def calc_means_by_first_non_walk_mode(trip_results,
+        trips_by_id, trip_req_start_dts):
+    trips_by_first_non_walk_mode = \
+        trip_itin_filters.categorise_trip_ids_by_first_non_walk_mode(
+            trip_results)
+    means_by_first_non_walk_mode = {}
+    for mode in otp_config.OTP_NON_WALK_MODES:
+        if trips_by_first_non_walk_mode[mode]: 
+            means_by_first_non_walk_mode[mode] = \
+                calc_means(
+                    trips_by_first_non_walk_mode[mode],
+                    trips_by_id, trip_req_start_dts)
+        else:
+            means_by_first_non_walk_mode[mode] = None
+    return means_by_first_non_walk_mode
+
+def calc_means_by_first_non_walk_mode_multi(trip_results_by_graph,
+        trips_by_id, trip_req_start_dts):
 
     trips_by_first_non_walk_mode = {}
     means_by_first_non_walk_mode = {}
@@ -328,19 +344,9 @@ def calc_means_of_tripset_by_first_non_walk_mode(trip_results_by_graph,
             trips_by_first_non_walk_mode[graph_name] = None
             means_by_first_non_walk_mode[graph_name] = None
             continue
-        # Further classify by first non-walk mode
-        trips_by_first_non_walk_mode[graph_name] = \
-            trip_itin_filters.categorise_trip_ids_by_first_non_walk_mode(
-                trip_results)
-        means_by_first_non_walk_mode[graph_name] = {}
-        for mode in otp_config.OTP_NON_WALK_MODES:
-            if trips_by_first_non_walk_mode[graph_name][mode]: 
-                means_by_first_non_walk_mode[graph_name][mode] = \
-                    calc_means_of_tripset(
-                        trips_by_first_non_walk_mode[graph_name][mode],
-                        trips_by_id, trip_req_start_dts)
-            else:
-                means_by_first_non_walk_mode[graph_name][mode] = None
+        means_by_first_non_walk_mode[graph_name] = \
+            calc_means_by_first_non_walk_mode(trip_results,
+                trips_by_id, trip_req_start_dts)
     return means_by_first_non_walk_mode
 
 def calc_print_mean_results_overall_summaries(
@@ -351,7 +357,7 @@ def calc_print_mean_results_overall_summaries(
     for graph_name in graph_names:
         trip_results = trip_results_by_graph[graph_name]
         if trip_results:
-            means[graph_name] = calc_means_of_tripset(
+            means[graph_name] = calc_means(
                 trip_results, trips_by_id, trip_req_start_dts)
         else:
             means[graph_name] = None
@@ -447,7 +453,7 @@ def calc_print_mean_results_by_first_non_walk_mode(
         description=None):
 
     means_by_first_non_walk_mode = \
-        calc_means_of_tripset_by_first_non_walk_mode(
+        calc_means_by_first_non_walk_mode_multi(
             trip_results_by_graph, trips_by_id, trip_req_start_dts)
 
     if description:
@@ -472,7 +478,7 @@ def calc_save_mean_results_by_first_non_walk_mode(
         description, output_file_base):
 
     means_by_first_non_walk_mode = \
-        calc_means_of_tripset_by_first_non_walk_mode(
+        calc_means_by_first_non_walk_mode_multi(
             trip_results_by_graph, trips_by_id, trip_req_start_dts)
 
     for graph_name in graph_names:
@@ -489,9 +495,19 @@ def calc_save_mean_results_by_first_non_walk_mode(
     print ""
     return
 
-def calc_mean_results_agg_by_agencies_used(
-        graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts):
+def calc_means_by_agencies_used(trip_results, trips_by_id,
+        trip_req_start_dts):
+    trips_by_agencies_used = \
+        trip_itin_filters.categorise_trips_by_agencies_used(trip_results)
+    means_by_agencies_used = {}
+    for agency_tuple, trip_itins in \
+            trips_by_agencies_used.iteritems():
+        means_by_agencies_used[agency_tuple] = \
+            calc_means(trip_itins, trips_by_id, trip_req_start_dts)
+    return means_by_agencies_used
 
+def calc_means_by_agencies_used_multi(graph_names, trip_results_by_graph,
+        trips_by_id, trip_req_start_dts):
     trips_by_agencies_used = {}
     means_by_agencies_used = {}
     for graph_name in graph_names:
@@ -504,22 +520,23 @@ def calc_mean_results_agg_by_agencies_used(
         for agency_tuple, trip_itins in \
                 trips_by_agencies_used[graph_name].iteritems():
             means_by_agencies_used[graph_name][agency_tuple] = \
-                calc_means_of_tripset(trip_itins, trips_by_id,
+                calc_means(trip_itins, trips_by_id,
                     trip_req_start_dts)
-    return trips_by_agencies_used, means_by_agencies_used
+    return means_by_agencies_used
 
 def calc_print_mean_results_by_agencies_used(
         graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts, 
         description=None):
-    trips_by_agencies_used, means_by_agencies_used = \
-        calc_mean_results_agg_by_agencies_used(graph_names,
+    means_by_agencies_used = \
+        calc_means_by_agencies_used(graph_names,
             trip_results_by_graph, trips_by_id, trip_req_start_dts)
 
     if description:
         extra_string = " (%s)" % description
     else:
         extra_string = ""
-    print "\nTrip results%s: aggregated by agencies used in trips were:" % extra_string
+    print "\nTrip results%s: aggregated by agencies used in trips were:" \
+        % extra_string
     for graph_name in graph_names:
         print "For graph %s:" % graph_name
         trip_results = trip_results_by_graph[graph_name]
@@ -538,11 +555,29 @@ def calc_print_mean_results_by_agencies_used(
         print ""
     return 
 
+def save_mean_results_by_agencies_used(means_by_agencies_used, output_fname):
+    means_by_agencies_used_strkeys = {}
+    for ag_tup, vals in means_by_agencies_used.iteritems():
+        strkey = ", ".join(ag_tup)
+        means_by_agencies_used_strkeys[strkey] = vals
+
+    # We want to stringify the agencies tuple, and 
+    # sort these by speed (reversed)
+    agency_strs_and_means_sorted_by_spd = sorted(
+        means_by_agencies_used_strkeys.iteritems(), 
+        key = lambda x: x[1]['direct speed (kph)'])
+    agency_strs_sorted_by_rev_spd = reversed(
+        map(operator.itemgetter(0), agency_strs_and_means_sorted_by_spd))
+    save_trip_result_means_to_csv(means_by_agencies_used_strkeys,
+        ['agencies used'], output_fname,
+        save_order=agency_strs_sorted_by_rev_spd)
+    return
+
 def calc_save_mean_results_by_agencies_used(
         graph_names, trip_results_by_graph, trips_by_id, trip_req_start_dts, 
         description, output_file_base):
-    trips_by_agencies_used, means_by_agencies_used = \
-        calc_mean_results_agg_by_agencies_used(graph_names,
+    means_by_agencies_used = \
+        calc_means_by_agencies_used(graph_names,
             trip_results_by_graph, trips_by_id, trip_req_start_dts)
         
     for graph_name in graph_names:
@@ -551,20 +586,8 @@ def calc_save_mean_results_by_agencies_used(
             % (description, graph_name, output_fname)
         if not trip_results_by_graph[graph_name]:
             continue
-        
-        means_by_agencies_used_strkeys = {}
-        for ag_tup, vals in means_by_agencies_used[graph_name].iteritems():
-            strkey = ", ".join(ag_tup)
-            means_by_agencies_used_strkeys[strkey] = vals
-
-        agency_strs_and_means_sorted_by_spd = sorted(
-            means_by_agencies_used_strkeys.iteritems(), 
-            key = lambda x: x[1]['direct speed (kph)'])
-        agency_strs_sorted_by_rev_spd = reversed(
-            map(operator.itemgetter(0), agency_strs_and_means_sorted_by_spd))
-        save_trip_result_means_to_csv(means_by_agencies_used_strkeys,
-            ['agencies used'], output_fname,
-            save_order=agency_strs_sorted_by_rev_spd)
+        save_mean_results_by_agencies_used(means_by_agencies_used,
+            output_fname)
     print ""
          
     return 
@@ -576,7 +599,7 @@ def calc_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts):
     for o_sla, tripsets_by_dest_sla in tripsets_by_od_sla.iteritems():
         means_by_od_sla[o_sla] = {}
         for d_sla, trip_itins in tripsets_by_dest_sla.iteritems():
-            means_by_od_sla[o_sla][d_sla] = calc_means_of_tripset(
+            means_by_od_sla[o_sla][d_sla] = calc_means(
                 trip_itins, trips_by_id, trip_req_start_dts)
     return means_by_od_sla
 
@@ -588,7 +611,23 @@ def calc_save_trip_info_by_OD_SLA(trip_itins, trips_by_id, trip_req_start_dts,
         ['Origin SLA', 'Dest SLA'], output_fname)
     return means_by_od_sla
 
-def calc_mean_results_by_dep_times(graph_names, trip_results_by_graph,
+def calc_means_by_dep_times(trip_results, trips_by_id,
+        trip_req_start_dts, dep_time_cats):
+    means_by_deptime = {}
+    for dep_time_cat, dt_info in dep_time_cats.iteritems():
+        trip_results_for_dep_time_cat = \
+            trip_itin_filters.get_results_in_dep_time_range(
+                trip_results, trip_req_start_dts, dt_info)
+        if trip_results_for_dep_time_cat:
+            means_by_deptime[dep_time_cat] = \
+                calc_means(trip_results_for_dep_time_cat, trips_by_id,
+                    trip_req_start_dts)
+        else:
+            # In case there's no results in that time period
+            means_by_deptime[dep_time_cat] = None
+    return means_by_deptime
+
+def calc_means_by_dep_times_multi(graph_names, trip_results_by_graph,
         trips_by_id, trip_req_start_dts, dep_time_cats):
     """Similar to the normal mean-printing function:- but this time breaks
     down results into categories based on departure times.
@@ -609,19 +648,8 @@ def calc_mean_results_by_dep_times(graph_names, trip_results_by_graph,
         if not trip_results:
             means_by_deptime[graph_name] = None
             continue
-        means_by_deptime[graph_name] = {}
-        for dep_time_cat, dt_info in dep_time_cats.iteritems():
-            trip_results_for_dep_time_cat = \
-                trip_itin_filters.get_results_in_dep_time_range(
-                    trip_results, trip_req_start_dts, dt_info)
-            if trip_results_for_dep_time_cat:
-                means_by_deptime[graph_name][dep_time_cat] = \
-                    calc_means_of_tripset(
-                        trip_results_for_dep_time_cat, trips_by_id,
-                        trip_req_start_dts)
-            else:
-                # In case there's no results in that time period
-                means_by_deptime[graph_name][dep_time_cat] = None
+        means_by_deptime[graph_name] = calc_means_by_dep_times(
+            trip_results, trips_by_id, trip_req_start_dts, dep_time_cats)
     return means_by_deptime
 
 def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
@@ -629,7 +657,7 @@ def calc_print_mean_results_by_dep_times(graph_names, trip_results_by_graph,
         dep_time_cats, description=None,
         dep_time_print_order=None ):
 
-    means_by_deptime = calc_mean_results_by_dep_times(graph_names,
+    means_by_deptime = calc_means_by_dep_times_multi(graph_names,
         trip_results_by_graph, trips_by_id, trip_req_start_dts, dep_time_cats)
 
     if description:
@@ -651,7 +679,7 @@ def calc_save_mean_results_by_dep_times(graph_names, trip_results_by_graph,
         trips_by_id, trip_req_start_dts, dep_time_cats,
         description, output_file_base, dep_time_print_order=None ):
 
-    means_by_deptime = calc_mean_results_by_dep_times(graph_names,
+    means_by_deptime = calc_means_by_dep_times(graph_names,
         trip_results_by_graph, trips_by_id, trip_req_start_dts, dep_time_cats)
 
     for graph_name in graph_names:
