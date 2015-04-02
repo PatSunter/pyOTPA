@@ -298,10 +298,19 @@ def calc_save_trip_info_by_mode_agency_route(trip_itins, trip_req_start_dts, out
                             sum_speeds_km_h += leg_speed_km_h
                             valid_speeds_cnt += 1
                 sum_dist_km = sum_dist / 1000.0            
-                avg_dist_km = sum_dist / float(sum_legs) / 1000.0    
-                mean_speed_km_h = sum_speeds_km_h / float(valid_speeds_cnt)
                 sum_wait_min = time_utils.get_total_mins(sum_wait)
-                mean_wait_min = sum_wait_min / float(sum_legs)
+                if sum_legs:
+                    avg_dist_km = sum_dist / float(sum_legs) / 1000.0    
+                    mean_wait_min = sum_wait_min / float(sum_legs)
+                else:
+                    # Putting these to zero in the case of this route not
+                    # being used at all.
+                    avg_dist_km = 0
+                    mean_wait_min = 0
+                if valid_speeds_cnt:
+                    mean_valid_speed_km_h = sum_speeds_km_h / float(valid_speeds_cnt)
+                else:    
+                    mean_valid_speed_km_h = 0
                 #print "      Used in %d legs, %d trips, for %.2f km " \
                 #    "(avg %.2f km/leg), at avg speed of %.2f km/hr" \
                 #    % (sum_legs, sum_trips, sum_dist / 1000.0, \
@@ -311,7 +320,7 @@ def calc_save_trip_info_by_mode_agency_route(trip_itins, trip_req_start_dts, out
                     round(sum_dist_km, OUTPUT_ROUND_DIST_KM), 
                     round(sum_wait_min, OUTPUT_ROUND_TIME_MIN), 
                     round(avg_dist_km, OUTPUT_ROUND_DIST_KM),
-                    round(mean_speed_km_h, OUTPUT_ROUND_DIST_KM),
+                    round(mean_valid_speed_km_h, OUTPUT_ROUND_DIST_KM),
                     round(mean_wait_min, OUTPUT_ROUND_TIME_MIN)]
                 writer.writerow(out_row)
             #print ""
@@ -824,23 +833,19 @@ def save_trip_result_means_to_csv(means_by_categories, cat_names,
 
 #####################
 
-def extract_trip_times_otp_format(trips_by_id, trip_req_start_dts,
-        trip_itins_1, trip_itins_2):
-    """A conversion function from a dict of TripItinerary's to just extract
+def extract_trip_times_otp_format(trips_by_id, trip_times_1, trip_times_2):
+    """A conversion function from a dict of trip IDs -> times to just extract
     trip times, for use in compute_trip_result_comparison_stats."""
-    trip_itins = [trip_itins_1, trip_itins_2]
-    trip_times = [[], []]
+    trip_times_in = [trip_times_1, trip_times_2]
+    trip_times_arrays = [[], []]
     for trip_id, trip in trips_by_id.iteritems():
         for ii in range(2):
-            if trip_id not in trip_itins[ii]:
+            if trip_id not in trip_times_in[ii]:
                 # This is OTP format for "trip didn't return valid result".
-                trip_times[ii].append(-1)
+                trip_times_arrays[ii].append(-1)
             else:
-                trip_start_dt = trip_req_start_dts[trip_id]
-                ti = trip_itins[ii][trip_id]
-                trip_time_s = ti.get_total_trip_sec(trip_start_dt)
-                trip_times[ii].append(trip_time_s)
-    return trip_times[0], trip_times[1]
+                trip_times_arrays[ii].append(trip_times_in[ii][trip_id])
+    return trip_times_arrays[0], trip_times_arrays[1]
 
 MINUTE_BREAKS = [1, 10, 20, 30, 60, 180]
 
@@ -982,8 +987,8 @@ def print_trip_result_comparison_stats(stats_dict):
 
 #####################
 
-def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_dts,
-        trip_results_1, trip_results_2, shapefilename):
+def createTripsCompShapefile(trips_by_id, graph_names,
+        trip_times_1, trip_times_2, shapefilename):
     """Creates a Shape file stating the difference between times in two
     sets of results for the same set of trips.
     Saves results to a shapefile determined by shapefilename.
@@ -1035,16 +1040,13 @@ def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_dts,
 
     for trip_id in sorted(trips_by_id.iterkeys()):
         trip = trips_by_id[trip_id]
-        trip_req_start_dt = trip_req_start_dts[trip_id]
 
         try:
-            trip_res_1 = trip_results_1[trip_id]
-            trip_res_2 = trip_results_2[trip_id]
+            trip_time_1 = trip_times_1[trip_id]
+            trip_time_2 = trip_times_2[trip_id]
         except KeyError:
             # For now - just skip trips not valid in both graphs.
             continue
-        case1time = trip_res_1.get_total_trip_sec(trip_req_start_dt)
-        case2time = trip_res_2.get_total_trip_sec(trip_req_start_dt)
         linester = ogr.Geometry(ogr.wkbLineString)
         linester.AddPoint(*trip[Trip.ORIGIN])
         linester.AddPoint(*trip[Trip.DEST])
@@ -1056,9 +1058,9 @@ def createTripsCompShapefile(trips_by_id, graph_names, trip_req_start_dts,
         feature.SetField('DepTime', trip[Trip.START_DTIME].strftime('%H:%M:%S'))
         feature.SetField('OriginZ', trip[Trip.O_ZONE])
         feature.SetField('DestZ', trip[Trip.D_ZONE])
-        feature.SetField(c1TimeFieldName, case1time)
-        feature.SetField(c2TimeFieldName, case2time)
-        diff = case1time - case2time
+        feature.SetField(c1TimeFieldName, trip_time_1)
+        feature.SetField(c2TimeFieldName, trip_time_2)
+        diff = trip_time_1 - trip_time_2
         feature.SetField('Diff', diff)
         layer.CreateFeature(feature)
 

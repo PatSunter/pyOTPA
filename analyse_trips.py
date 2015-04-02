@@ -14,6 +14,8 @@ from pyOTPA import trip_filters
 from pyOTPA import trip_itin_filters
 
 ALL_TRIPS_DESC = "all_trips"
+BASE_FILTER_DESC = "filtered"
+NEAR_IMP_NW_DESC = "near_imp_nw"
 
 def exclude_slow_trips_long_walks(
         trips_by_id, trip_req_start_dts, trip_results):
@@ -23,7 +25,7 @@ def exclude_slow_trips_long_walks(
     filter_desc_long = "filtered to remove trips with > %.1fkm walk legs "\
         "and those with calc time > %s" \
         % (longest_walk_len_km, longest_trip_time)
-    filter_desc_short = "filtered"
+    filter_desc_short = BASE_FILTER_DESC
 
     # Filter out trips that involved a very long walk:-
     # OTP still sometimes returns these where there is no alternative 
@@ -39,10 +41,11 @@ def exclude_slow_trips_long_walks(
             trip_results, trip_req_start_dts, longest_trip_time)
     trip_ids_to_exclude.update(trip_ids_long_time)
 
-    trip_results_filtered = \
-        Trip.get_trips_subset_by_ids_to_exclude(trip_results, 
-            trip_ids_to_exclude)
-    return trip_results_filtered, filter_desc_short, filter_desc_long
+    all_trip_ids_set = set(trip_results.iterkeys())
+    trip_ids_to_keep = sorted(list(
+        all_trip_ids_set.difference(trip_ids_to_exclude)))
+
+    return trip_ids_to_keep, filter_desc_short, filter_desc_long
 
 def trips_near_upgraded_networks(
         trips_by_id, trip_req_start_dts, trip_results, imp_network_stop_lyrs):
@@ -51,16 +54,13 @@ def trips_near_upgraded_networks(
     filter_desc_long = "Trips starting and finishing within %dm "\
         "of the upgraded networks' stops (Trains, trams, smartbuses, "\
             "and selected regular buses)" % buff_dist_m
-    filter_desc_short = "near_imp_nw"
+    filter_desc_short = NEAR_IMP_NW_DESC
     trip_result_ids_iter = trip_results.iterkeys()
     trip_ids_near_imp_route_stops = \
         trip_filters.get_trip_ids_near_network_stops(trips_by_id,
             imp_network_stop_lyrs, buff_dist_m, trip_result_ids_iter)
-    trip_results_filtered = \
-        Trip.get_trips_subset_by_ids(trip_results, 
-            trip_ids_near_imp_route_stops)
 
-    return trip_results_filtered, filter_desc_short, filter_desc_long
+    return trip_ids_near_imp_route_stops, filter_desc_short, filter_desc_long
 
 def process_one_graph_results(trips_by_id, trip_req_start_dts,
         output_base_dir, graph_name, dep_time_cats, dep_time_order,
@@ -68,35 +68,56 @@ def process_one_graph_results(trips_by_id, trip_req_start_dts,
     """Split out into a separate function to save memory by processing each
     graph's results one at a time."""
 
+    trip_summary_results = {}
     trip_results = {}
-    descs_long = {}
+    subset_ids = {}
+    subset_descs = {}
+    subset_descs_long = {}
 
     trip_results[ALL_TRIPS_DESC] = trip_itins_io.load_trip_itineraries(
         output_base_dir, [graph_name])[graph_name]
-    descs_long[ALL_TRIPS_DESC] = "all trips"
+    subset_descs_long[ALL_TRIPS_DESC] = "all trips"
+
+    print "Extracting trip summary results for graph %s:" \
+        % graph_name
+    trip_summary_results['total_times'] = {}
+    for trip_id in trip_results[ALL_TRIPS_DESC]:
+        trip_summary_results['total_times'][trip_id] = \
+            trip_results[ALL_TRIPS_DESC][trip_id].get_total_trip_sec(
+                trip_req_start_dts[trip_id])
+    print "...done."
+
+    print "Calculating requested subsets of trip results for graph %s:" \
+        % graph_name
+
+    # Now apply various filters to the trip-set ...
+    print "  calc subset of trips excluding those with long walks and "\
+        "very slow trips:"
+    subset_ids_list, subset_desc, filter_desc_long = \
+        exclude_slow_trips_long_walks(
+            trips_by_id, trip_req_start_dts, trip_results[ALL_TRIPS_DESC])
+    subset_ids[subset_desc] = subset_ids_list 
+    subset_descs_long[subset_desc] = filter_desc_long
+    print "  calc subset of trips close to improved networks:"\
+    subset_ids_list, subset_desc, filter_desc_long = \
+        trips_near_upgraded_networks(
+            trips_by_id, trip_req_start_dts, trip_results[ALL_TRIPS_DESC],
+            imp_network_stop_lyrs)
+    subset_ids[subset_desc] = subset_ids_list 
+    subset_descs_long[subset_desc] = filter_desc_long
+
+    for desc, trip_ids in subset_ids.iteritems():
+        trip_results[desc] = Trip.get_trips_subset_by_ids(
+            trip_results[ALL_TRIPS_DESC], trip_ids)
+    print "...done."
 
     print "Calculating various means and other statistics for graph %s:" \
         % graph_name
 
-    # Now apply various filters to the trip-set ...
-    trip_results_filt, base_filtered_desc, filter_desc_long = \
-        exclude_slow_trips_long_walks(
-            trips_by_id, trip_req_start_dts, trip_results[ALL_TRIPS_DESC])
-    trip_results[base_filtered_desc] = trip_results_filt
-    descs_long[base_filtered_desc] = filter_desc_long
-    trip_results_filt, near_imp_nw_desc, filter_desc_long = \
-        trips_near_upgraded_networks(
-            trips_by_id, trip_req_start_dts, trip_results[ALL_TRIPS_DESC],
-            imp_network_stop_lyrs)
-    trip_results[near_imp_nw_desc] = trip_results_filt
-    descs_long[near_imp_nw_desc] = filter_desc_long
-
-    result_descs = [ALL_TRIPS_DESC, base_filtered_desc, near_imp_nw_desc]
-    trip_summary_results = {}
+    result_descs = [ALL_TRIPS_DESC] + subset_ids.keys()
     means = {}
     usages = {}
     for desc in result_descs:
-        trip_summary_results[desc] = {}
         means[desc] = {}
         usages[desc] = {}
 
@@ -123,20 +144,26 @@ def process_one_graph_results(trips_by_id, trip_req_start_dts,
             trip_analysis.calc_trip_info_by_OD_SLA(
                 trip_results[desc], trips_by_id, trip_req_start_dts)
 
+    print "...done calculating."
+
+    # TODO: really should separate this 'usages' into a calc, then save step
+    # also.
+    for desc in result_descs:
+        if not trip_results[desc]: continue
         #usages[filtered_desc]['by_mode_agency_route'] = \
         #    trip_analysis.calc_trip_info_by_mode_agency_route(
         #        trip_results[desc], trip_req_start_dts, output_fname)
-        print "Saving info for individual routes to files:"
+        print "Saving info for individual routes to files for desc %s:" \
+            % desc
         output_fname = os.path.join(output_base_dir, 
             "route_totals-%s-%s.csv" % (desc, graph_name))
         print "For desc %s: to %s" % (desc, output_fname)
         trip_analysis.calc_save_trip_info_by_mode_agency_route(
             trip_results[desc], trip_req_start_dts, output_fname)
 
-    print "...done calculating."
-
     print "Saving larger stat sets to files:"
     for desc in result_descs:
+        if not trip_results[desc]: continue
         print "For desc %s:" % (desc)
         output_fname = os.path.join(output_base_dir, 
             "means-%s-%s-%s.csv" % ('by_first_nonwalk_mode',
@@ -169,7 +196,7 @@ def process_one_graph_results(trips_by_id, trip_req_start_dts,
             ['Origin SLA', 'Dest SLA'], output_fname)
     print "...done saving."
 
-    return trip_summary_results, means, usages, descs_long
+    return trip_summary_results, means, usages, subset_ids, subset_descs_long
 
 def main():
     parser = OptionParser()
@@ -266,14 +293,20 @@ def main():
 
     # Extract results, one graph at a time.
     means_by_graph = {}
-    for graph_name in graph_names:
-        trip_summary_results, means, usages, descs_long = \
+    usage_by_graph = {}
+    trip_summary_results_by_graph = {}
+    subset_ids_by_graph = {}
+    subset_descs_long_by_graph = {}
+    for gn in graph_names:
+        trip_summary_results, means, usages, subset_ids, subset_descs_long = \
             process_one_graph_results(
-                trips_by_id, trip_req_start_dts, output_base_dir, graph_name,
+                trips_by_id, trip_req_start_dts, output_base_dir, gn,
                 dep_time_cats, dep_time_order, imp_network_stop_lyrs)
-        #trip_times_by_graph[graph_name] = trip_summary_results['total_times']
-        means_by_graph[graph_name] = means
-    subset_descs = means_by_graph.values()[0].keys()
+        trip_summary_results_by_graph[gn] = trip_summary_results
+        means_by_graph[gn] = means
+        usage_by_graph[gn] = usages
+        subset_ids_by_graph[gn] = subset_ids
+        subset_descs_long_by_graph[gn] = subset_descs_long
 
     # print high-level summaries
     
@@ -283,13 +316,13 @@ def main():
     print "Overall trip means by graph were:"
     trip_analysis.print_mean_results(overall_means)
 
-    for desc in subset_descs:
+    for desc in subset_ids_by_graph.values()[0].iterkeys():
         if desc == ALL_TRIPS_DESC: continue
         subset_means = {}
         for gn in graph_names:
             subset_means[gn] = means_by_graph[gn][desc]['overall'] 
         print "trip means for trip subset '%s' by graph were:" \
-            % (descs_long[desc])
+            % (subset_descs_long_by_graph.values()[0][desc])
         trip_analysis.print_mean_results(subset_means)
 
     # TODO: re-enable
@@ -298,39 +331,47 @@ def main():
     #    trips_by_id, trip_req_start_dts, 
     #    description=FILTERED_DESC)
 
-    # TODO: re-enable.
-    if False and comp_shp_graphs:
-        graph_name_1, graph_name_2 = comp_shp_graphs
+    if comp_shp_graphs:
+        gn1, gn2 = comp_shp_graphs
+        trip_times_1 = trip_summary_results_by_graph[gn1]['total_times']
+        trip_times_2 = trip_summary_results_by_graph[gn2]['total_times']
+
         comp_shpfilename = os.path.join(output_base_dir, 
-            "%s-vs-%s.shp" % (graph_name_1, graph_name_2))
+            "%s-vs-%s.shp" % (gn1, gn2))
         trip_analysis.createTripsCompShapefile(trips_by_id, 
-            (graph_name_1, graph_name_2),
-            trip_req_start_dts,
-            trip_results_by_graph[graph_name_1], 
-            trip_results_by_graph[graph_name_2],
-            comp_shpfilename)
+            (gn1, gn2), trip_times_1, trip_times_2, comp_shpfilename)
 
-        times_1, times_2 = trip_analysis.extract_trip_times_otp_format(
-            trips_by_id, 
-            trip_req_start_dts,
-            trip_results_by_graph[graph_name_1], 
-            trip_results_by_graph[graph_name_2])
+        times_otp_1, times_otp_2 = trip_analysis.extract_trip_times_otp_format(
+            trips_by_id, trip_times_1, trip_times_2)
         stats = trip_analysis.compute_trip_result_comparison_stats(
-            times_1, times_2)
-        #print "Overall stats comparing between graphs '%s' and '%s' as "\
-        #    "follows:" % (graph_name_1, graph_name_2)
-        #trip_analysis.print_trip_result_comparison_stats(stats)
+            times_otp_1, times_otp_2)
+        print "Overall stats comparing between graphs '%s' and '%s' as "\
+            "follows:" % (gn1, gn2)
+        trip_analysis.print_trip_result_comparison_stats(stats)
+        
+        for desc in subset_ids_by_graph[gn1].iterkeys():
+            if desc == ALL_TRIPS_DESC: continue
+            s_trip_times_1 = {}
+            s_trip_times_2 = {}
+            for trip_id in subset_ids_by_graph[gn1][desc]:
+                s_trip_times_1[trip_id] = trip_times_1[trip_id]
+            for trip_id in subset_ids_by_graph[gn2][desc]:
+                s_trip_times_2[trip_id] = trip_times_2[trip_id]
+                
+            comp_shpfilename = os.path.join(output_base_dir, 
+                "%s-vs-%s-%s.shp" % (gn1, gn2, desc))
+            trip_analysis.createTripsCompShapefile(trips_by_id, 
+                (gn1, gn2), s_trip_times_1, s_trip_times_2, comp_shpfilename)
 
-        times_1, times_2 = trip_analysis.extract_trip_times_otp_format(
-            trips_by_id, 
-            trip_req_start_dts,
-            trip_results_by_graph_near_imp_network_stops[graph_name_1], 
-            trip_results_by_graph_near_imp_network_stops[graph_name_2])
-        stats = trip_analysis.compute_trip_result_comparison_stats(
-            times_1, times_2)
-        #print "Stats comparing between graphs '%s' and '%s' - near improved "\
-        #    "network stops:- as follows:" % (graph_name_1, graph_name_2)
-        #trip_analysis.print_trip_result_comparison_stats(stats)
+            s_times_otp_1, s_times_otp_2 = \
+                trip_analysis.extract_trip_times_otp_format(
+                    trips_by_id, s_trip_times_1, s_trip_times_2)
+            s_stats = trip_analysis.compute_trip_result_comparison_stats(
+                s_times_otp_1, s_times_otp_2)
+            print "Stats comparing between graphs '%s' and '%s', for "\
+                "trips subset '%s':" \
+                % (gn1, gn2, subset_descs_long_by_graph[gn1][desc])
+            trip_analysis.print_trip_result_comparison_stats(s_stats)
 
     # cleanup
     train_stops_shp.Destroy()
