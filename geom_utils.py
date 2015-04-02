@@ -63,11 +63,15 @@ def bbox_partially_within_bbox(inner, outer):
         return False
     return True
 
+def expanded_bbox(bbox, expand_dist):
+    return (bbox[0] - expand_dist, bbox[1] + expand_dist,
+        bbox[2] - expand_dist, bbox[3] + expand_dist)
+
 def build_and_populate_gridded_spatial_index(lyr, levels, grid_per_level):
     print "Building a spatial index for layer, with %d levels, of "\
         "grid size %d * %d per level..." \
             % (levels, grid_per_level, grid_per_level)
-    assert levels > 1
+    assert levels >= 1
     assert grid_per_level > 1
     lyr_extent = lyr.GetExtent()
     print "  ...creating the empty index..."
@@ -202,8 +206,41 @@ def get_index_entries_of_geom(gridded_index, geom, find_mode=False):
     return partially_within_bboxes, partially_within_indexes, \
         partially_within_levels, partially_within_parent_indices 
 
+def get_index_entries_within_dist_of_pt_geom(gridded_index, pt_geom, test_dist):
+    pt_coord = pt_geom.GetPoint_2D()
+    within_dist_bboxes = []
+    within_dist_indexes = []
+    within_dist_levels = []
+    within_dist_parent_indices = []
+    start_level = 1
+    indexes_to_search = \
+        zip(gridded_index.keys(), gridded_index.values(),
+            itertools.repeat(start_level), itertools.repeat(gridded_index))
+    while indexes_to_search:
+        index_bbox, index_entries_at_level, curr_level, parent_index = \
+            indexes_to_search.pop()
+        index_bbox_expanded = expanded_bbox(index_bbox, test_dist)
+        if within_bbox(pt_coord, index_bbox_expanded):
+            if isinstance(index_entries_at_level, dict):
+                sub_level = curr_level + 1
+                sub_dict = index_entries_at_level
+                new_entries = [None] * len(sub_dict)
+                for ii, item in enumerate(sub_dict.iteritems()):
+                    sub_bbox, sub_index_entry = item
+                    new_entries[ii] = (sub_bbox, sub_index_entry, 
+                        sub_level, sub_dict)
+                indexes_to_search.extend(new_entries)
+            else:
+                within_dist_bboxes.append(index_bbox)
+                within_dist_indexes.append(index_entries_at_level)
+                within_dist_levels.append(curr_level)
+                within_dist_parent_indices.append(parent_index)
+    return within_dist_bboxes, within_dist_indexes, \
+        within_dist_levels, within_dist_parent_indices 
+
+
 def add_shp_to_index(gridded_index, new_shp):
-    geom = shp.GetGeometryRef()
+    shp_geom = new_shp.GetGeometryRef()
     found_bboxes, found_indexes, found_levels, parent_indexes = \
         get_index_entries_of_geom(gridded_index, shp_geom)
     assert found_bboxes
@@ -244,6 +281,31 @@ def add_shp_to_index_dynamic_splitting(gridded_index, max_levels,
             parent_indexes[ii][found_bbox] = new_sub_index    
     return
 
+def check_any_shps_near_point(gridded_index, pt_geom, test_dist):
+    result = False
+    shp_near_point = None
+    found_bboxes, found_indexes, found_levels, parent_indexes = \
+        get_index_entries_within_dist_of_pt_geom(
+            gridded_index, pt_geom, test_dist)
+    if not found_bboxes:
+        print "Warning:- didn't find requested geom %s within _any_ of the "\
+            "spatial index boxes. Is it outside the known region, or in "\
+            "a different SRS to the index?" % (pt_geom.ExportToWkt())
+        return False, None
+    pt_coord = pt_geom.GetPoint_2D()
+    for found_index in found_indexes:
+        for shp, shp_bbox in found_index:
+            shp_bbox_expanded = expanded_bbox(shp_bbox, test_dist)
+            if within_bbox(pt_coord, shp_bbox_expanded):
+                shp_geom = shp.GetGeometryRef()
+                if shp_geom.Distance(pt_geom) < test_dist:
+                    result = True
+                    shp_near_point = shp
+                    break
+        if result:
+            break
+    return result, shp_near_point
+
 POTENTIAL_SHP_BBOX_TESTS = 0
 ACTUAL_SHP_BBOX_TESTS = 0
 ACTUAL_CONTAINS_TESTS = 0
@@ -280,24 +342,26 @@ def get_shp_geom_is_within_using_index(gridded_index, geom):
             break
     if not shp_within:
         # This import is a bit of a hack here.
-        from pyOTPA.Trips_Generator import abs_zone_io
+        #from pyOTPA.Trips_Generator import abs_zone_io
         cand_shapes = []
         cand_shape_bboxes = []
-        cand_shape_ccds = []
+        #cand_shape_ccds = []
         for found_index in found_indexes:
             for shp, shp_bbox in found_index:
                 cand_shapes.append(shp)
                 cand_shape_bboxes.append(shp_bbox)
-                cand_shape_ccds.append(
-                    shp.GetField(abs_zone_io.CCD_CODE_FIELD))
-        print "Warning:- found requested geom %s was within %d of the "\
-            "spatial index boxes (with bboxes %s).\nHowever didn't "\
-            "find the geom to be within any of the %d shapes in these "\
-            "index boxes (with bboxes %s, and CCD codes %s).\n"\
-            "Is it outside the known region, or in "\
-            "a different SRS to the index?" \
-            % (geom.ExportToWkt(), len(found_indexes), found_bboxes,
-               len(cand_shapes), cand_shape_bboxes, cand_shape_ccds)
-        #import pdb
-        #pdb.set_trace()
+                #cand_shape_ccds.append(
+                #    shp.GetField(abs_zone_io.CCD_CODE_FIELD))
+        if False:
+            print "Warning:- found requested geom %s was within %d of the "\
+                "spatial index boxes (with bboxes %s).\nHowever didn't "\
+                "find the geom to be within any of the %d shapes in these "\
+                "index boxes (with bboxes %s).\n"\
+                "Is it outside the known region, or in "\
+                "a different SRS to the index?"\
+                "(Sometimes this makes sense though e.g. when there are small "\
+                "gaps in the region of interest without a shape geometry, "\
+                "e.g. on rivers in a land-use map." \
+                % (geom.ExportToWkt(), len(found_indexes), found_bboxes,
+                   len(cand_shapes), cand_shape_bboxes)#, cand_shape_ccds)
     return shp_within
