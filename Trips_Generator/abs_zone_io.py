@@ -9,6 +9,7 @@ def create_ccd_code_map(ccd_lyr):
         ccd_code = ccd_shp.GetField(CCD_CODE_FIELD)       
         ccd_geom = ccd_shp.GetGeometryRef()
         polys_dict[ccd_code] = ccd_shp
+    ccd_lyr.ResetReading()
     return polys_dict
 
 def create_sla_name_map(sla_lyr):
@@ -18,6 +19,7 @@ def create_sla_name_map(sla_lyr):
         sla_name = sla_shp.GetField(SLA_NAME_FIELD)       
         sla_geom = sla_shp.GetGeometryRef()
         polys_dict[sla_name] = sla_shp
+    sla_lyr.ResetReading()
     return polys_dict
 
 def get_sla_name_ccd_within(ccd_feats_dict, ccd_code_interest):
