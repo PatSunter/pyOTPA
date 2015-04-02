@@ -95,9 +95,10 @@ class ZoneBlockBasedTimeGenerator(TimeGenerator):
             self._curr_block) + timedelta(hours=1)).time()
         self._next_time_block_trip_i_in_zone += \
             self._curr_od_trip_scaled_trip_cnts[self._curr_block]
-        print "Updating gen_times to create %d trips b/w %s and %s" % \
-            (self._curr_od_trip_scaled_trip_cnts[self._curr_block], \
-             self._curr_block, self._curr_block_end)
+        if self._curr_od_trip_scaled_trip_cnts[self._curr_block]:
+            print "Updating gen_times to create %d trips b/w %s and %s" % \
+                (self._curr_od_trip_scaled_trip_cnts[self._curr_block], \
+                 self._curr_block, self._curr_block_end)
 
     def gen_time(self):
         assert sum(self._curr_od_trip_scaled_trip_cnts.itervalues()) > 0
