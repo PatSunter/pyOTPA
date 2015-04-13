@@ -53,7 +53,7 @@ def saveIsosForLocations(server_url, otp_router_id, save_path,
         save_nearby_times, nearby_minutes, num_each_side,
         routing_params, 
         raster_bounding_buf, raster_res,
-        iso_inc, iso_max, vec_types):
+        iso_inc, iso_max, vec_types, re_download=False):
 
     if os.path.exists(save_path) is False: 
         os.makedirs(save_path)
@@ -82,19 +82,21 @@ def saveIsosForLocations(server_url, otp_router_id, save_path,
             print "About to save rasters at dates and times, to files:"
             for date_time_tuple, fname in zip(date_time_str_set, fname_set):
                 date_mod, time_mod = date_time_tuple
-                print "   %s - %s -> %s" % (date_mod, time_mod, fname) 
+                if re_download or not os.path.exists(fname):
+                    print "   %s - %s -> %s" % (date_mod, time_mod, fname) 
 
             for date_time_tuple, fname in zip(date_time_str_set, fname_set):
-                date_mod, time_mod = date_time_tuple
-                url = buildRequestStringRaster(server_url, routing_params,
-                    date_mod, time_mod, lon_lat, img_bbox, raster_res,
-                    otp_router_id)
-                print url
-                response = urllib2.urlopen(url)
-                data = response.read()
-                f = open(fname, "w")
-                f.write(data)
-                f.close()
+                if re_download or not os.path.exists(fname):
+                    date_mod, time_mod = date_time_tuple
+                    url = buildRequestStringRaster(server_url, routing_params,
+                        date_mod, time_mod, lon_lat, img_bbox, raster_res,
+                        otp_router_id)
+                    print url
+                    response = urllib2.urlopen(url)
+                    data = response.read()
+                    f = open(fname, "w")
+                    f.write(data)
+                    f.close()
 
             # Now get the vectors, at different time radius.
             # TODO: Remove once iso issue debugged successfully on NECTAR
@@ -104,23 +106,25 @@ def saveIsosForLocations(server_url, otp_router_id, save_path,
             isochrones = range(iso_inc, iso_max+1, iso_inc)
             for iso in isochrones:
                 for vec_type in vec_types:
-                    url = buildRequestStringVector(server_url, routing_params, 
-                        date, time, lon_lat, iso, vec_type, otp_router_id)
-                    print url
-                    response = urllib2.urlopen(url)
-                    data = response.read()
-                    f = open(utils.vectorName(loc_name_orig, time, iso, vec_type,
-                        save_path, save_suffix), "w")
-                    f.write(data)
-                    f.close()
+                    vec_fname = utils.vectorName(loc_name_orig, time, iso, vec_type,
+                        save_path, save_suffix)
+                    if re_download or not os.path.exists(vec_fname):
+                        url = buildRequestStringVector(server_url, routing_params, 
+                            date, time, lon_lat, iso, vec_type, otp_router_id)
+                        print url
+                        response = urllib2.urlopen(url)
+                        data = response.read()
+                        f = open(vec_fname, "w")
+                        f.write(data)
+                        f.close()
             print "DONE!\n"
     return
 
-def save_isos(multi_graph_iso_set):
+def save_isos(multi_graph_iso_set, re_download=False):
     for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
             multi_graph_iso_set:
         saveIsosForLocations(server_url, otp_router_id, save_path,
-            save_suffix, **isos_spec)
+            save_suffix, re_download=re_download, **isos_spec)
 
 def load_locations_from_shpfile(shpfile_name):
     """Desired output format is a list of tuples containing a location name,
