@@ -8,6 +8,8 @@ from osgeo import ogr, osr
 
 OTP_ROUTER_EPSG = 4326
 LOCATION_NAME_FIELD = "Name"
+ID_FIELD = "id"
+TIME_FIELD = "time"
 
 def rasterName(loc_name, date, time, base_path=None, suffix=None):
     fname =  str.replace(loc_name, ' ', '_') \
