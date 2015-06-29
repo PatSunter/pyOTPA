@@ -3,26 +3,12 @@ import os.path
 
 from qgis.core import QgsRectangle
 
+import pyOTPA.Isochrones.utils
 import qgis_utils
 
 # Hard-code this for now - good be good to load from file and style 
 # it ...
 VECTOR_BASE_LAYER_ID = "cstviccd_r20140620145403419"
-
-# TODO:- should use the pyOTPA.Isochrones.utils functions for these 
-#  probably ...
-
-def isos_fname(results_base_path, place_date_time, run_set_name, run_set_ext):
-    fname = os.path.join(results_base_path, run_set_name,
-                '%s-%s-avg9-isobands.shp' % (place_date_time, run_set_ext))
-    return fname
-
-def isos_smoothed_fname(results_base_path, place_date_time, run_set_name,
-        run_set_ext):
-    fname = os.path.join(results_base_path, run_set_name,
-                '%s-%s-avg9-isobands-smoothed.shp' \
-                    % (place_date_time, run_set_ext))
-    return fname
 
 #iso_dicts = {
 #    'CHADSTONE-2015_02_18-09_00_00':
@@ -36,7 +22,8 @@ def isos_smoothed_fname(results_base_path, place_date_time, run_set_name,
 #    }
 
 def make_iso_map_requests_dict(loc_names_descs, datetime_str_descs,
-        iso_descs, isos_base_dirs, iso_set_names, iso_exts, use_smoothed_isos):
+        datetime_num_each_sides, iso_descs, isos_base_dirs, iso_set_names,
+        iso_exts, use_smoothed_isos):
     iso_reqs_dict = {}
     for loc_name, loc_desc in loc_names_descs.iteritems():
         for datetime_str, datetime_desc in datetime_str_descs.iteritems():
@@ -53,13 +40,21 @@ def make_iso_map_requests_dict(loc_names_descs, datetime_str_descs,
                 isos_base_dir = isos_base_dirs
                 isos_base_dir_0 = isos_base_dir
                 isos_base_dir_1 = isos_base_dir
-            fname_func = isos_fname
+            
+            num_each_side = datetime_num_each_sides[datetime_str]
+            datestr = datetime_str.split('-')[0]
+            timestr = datetime_str.split('-')[1] 
+            fname_func = pyOTPA.Isochrones.utils.isoBandsName
             if use_smoothed_isos:
-                fname_func = isos_smoothed_fname
-            req_dict['iso_1_fname'] = fname_func(isos_base_dir_0,
-                loc_datetime_str, iso_set_names[0], iso_exts[0])
-            req_dict['iso_2_fname'] = fname_func(isos_base_dir_1,
-                loc_datetime_str, iso_set_names[1], iso_exts[1])
+                fname_func = \
+                    pyOTPA.Isochrones.utils.smoothedIsoBandsNameCombined
+            save_path_0 = os.path.join(isos_base_dir_0, iso_set_names[0])
+            req_dict['iso_1_fname'] = fname_func(loc_name, datestr, timestr,
+                save_path_0, iso_exts[0], num_each_side)
+            save_path_1 = os.path.join(isos_base_dir_1, iso_set_names[1])
+            req_dict['iso_2_fname'] = fname_func(loc_name, datestr, timestr,
+                save_path_1, iso_exts[1], num_each_side)
+
             iso_reqs_dict[loc_datetime_str] = req_dict
     return iso_reqs_dict
 
