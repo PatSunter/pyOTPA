@@ -6,11 +6,13 @@ Uses the shapely library and its flexible buffer function for this."""
 import os, os.path
 from argparse import ArgumentParser
 
-import osgeo.ogr
+import osgeo
 from osgeo import ogr, osr
 from shapely.wkb import loads
 from shapely.geometry import Polygon, MultiPolygon, CAP_STYLE, JOIN_STYLE
 from shapely.ops import cascaded_union
+
+import utils
 
 #Popular vis EPSG
 DEF_OUTPUT_EPSG = 3785
@@ -109,21 +111,28 @@ def smooth_polygon(polygon, log_full=False):
             % (polygon.area, new_polygon.area, area_change_percent)
     return new_polygon
 
+def create_smoothed_isobands_shpfile(shp_file_name, shp_srs, time_field=False):
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    if os.path.exists(shp_file_name):
+        os.remove(shp_file_name)
+    ds = driver.CreateDataSource(shp_file_name)
+    shp_layer = ds.CreateLayer('polys', shp_srs, ogr.wkbPolygon)
+    shp_layer.CreateField(ogr.FieldDefn(utils.ID_FIELD, ogr.OFTInteger))
+    if time_field:
+        shp_layer.CreateField(ogr.FieldDefn(utils.TIME_FIELD, ogr.OFTReal))
+    return ds, shp_layer
+
 def smooth_all_polygons(in_file_name, out_file_name, out_epsg=DEF_OUTPUT_EPSG,
         fill_holes=True, log_full=False): 
     source = ogr.Open(in_file_name)
     in_layer = source.GetLayer(0)
-
-    driver = ogr.GetDriverByName('ESRI Shapefile')
-    if os.path.exists(out_file_name):
-        os.remove(out_file_name)
-    ds = driver.CreateDataSource(out_file_name)
     in_srs = in_layer.GetSpatialRef() 
+
     out_srs = osr.SpatialReference()
     out_srs.ImportFromEPSG(out_epsg)
-    out_layer = ds.CreateLayer('polys', out_srs, ogr.wkbPolygon)
-    out_layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
+    ds, out_layer = create_smoothed_isobands_shpfile(out_file_name, out_srs)
     defn = out_layer.GetLayerDefn()
+    out_srs = out_layer.GetSpatialRef()
 
     smoothed_polys = []
     for ii, poly_feat in enumerate(in_layer):
@@ -164,9 +173,9 @@ def smooth_all_polygons(in_file_name, out_file_name, out_epsg=DEF_OUTPUT_EPSG,
         all_polys = MultiPolygon(all_polys_new_list)
 
     # Now write out to output file individually.
-    for out_poly in all_polys:
+    for ii, out_poly in enumerate(all_polys):
         new_feat = ogr.Feature(defn)
-        new_feat.SetField('id', ii)
+        new_feat.SetField(utils.ID_FIELD, ii)
         new_geom = ogr.CreateGeometryFromWkb(out_poly.wkb)
         new_feat.SetGeometry(new_geom)
         out_layer.CreateFeature(new_feat)
