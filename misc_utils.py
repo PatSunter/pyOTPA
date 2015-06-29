@@ -27,3 +27,8 @@ def recurse_into_dict(work_dict, prev_keys, max_levels=None):
         result = flat_dict_vals
     return result
 
+def remove_formatting_chars(in_str):
+    out_str = in_str.replace('\n', '').replace('\t', '')
+    out_str = out_str.replace(' '*4, ' ')
+    return out_str
+
