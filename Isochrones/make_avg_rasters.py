@@ -76,8 +76,10 @@ def make_contours_isobands(save_path, save_suffix, loc_name, datestr, timestr,
         % (utils.TIME_FIELD, avg_fname, ctr_fname, timeset_str)
     print "Running %s:" % contourcmd
     os.system(contourcmd)
-    isob_fname = utils.isoBandsAllName(loc_name, datestr, timestr, save_path, 
-        save_suffix, num_each_side)
+    isob_fname = utils.isoBandsName(loc_name, datestr, timestr,
+        save_path, save_suffix, num_each_side)
+    isob_all_fname = utils.isoBandsAllName(loc_name, datestr, timestr,
+        save_path, save_suffix, num_each_side)
     # Line below calls script that relies on Matplotlib
     # Sourced from:
     # https://github.com/rveciana/geoexamples/tree/master/python/raster_isobands
