@@ -40,6 +40,52 @@ def vectorName(loc_name, date, time, iso, vec_type,
         path = fname
     return path
 
+def avgRasterName(loc_name, datestr, timestr, save_path, save_suffix,
+        num_each_side):
+    numavg = 1 + 2*num_each_side
+    fname_base = rasterName(loc_name, datestr, timestr, save_path,
+        save_suffix)
+    return os.path.splitext(fname_base)[0] + "-avg%d.tiff" % numavg
+
+def isoContoursName(loc_name, datestr, timestr, save_path, save_suffix,
+        num_each_side):
+    avg_fname = avgRasterName(loc_name, datestr, timestr, save_path,
+        save_suffix, num_each_side)
+    return os.path.splitext(avg_fname)[0] + "-isocontours.shp"
+
+def isoBandsName(loc_name, datestr, timestr, save_path, save_suffix, 
+        num_each_side):
+    avg_fname = avgRasterName(loc_name, datestr, timestr, save_path,
+        save_suffix, num_each_side)
+    return os.path.splitext(avg_fname)[0] + "-isobands.shp"
+
+def isoBandsAllName(loc_name, datestr, timestr, save_path, save_suffix, 
+        num_each_side):
+    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
+        save_suffix, num_each_side)
+    return os.path.splitext(isob_fname)[0] + "-all.shp"
+
+def polysIsoBandsName(loc_name, datestr, timestr, save_path, save_suffix,
+        num_each_side, iso_level):
+    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
+        save_suffix, num_each_side)
+    return os.path.splitext(isob_fname)[0] + "-%d-polys.shp" % iso_level
+
+def smoothedIsoBandsName(loc_name, datestr, timestr, save_path, 
+        save_suffix, num_each_side, iso_level):
+    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
+        save_suffix, num_each_side)
+    smoothed_fname = os.path.splitext(isob_fname)[0] + "-%d-smoothed.shp"\
+        % (iso_level)
+    return smoothed_fname
+
+def smoothedIsoBandsNameCombined(loc_name, datestr, timestr, save_path, 
+        save_suffix, num_each_side):
+    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
+        save_suffix, num_each_side)
+    smoothed_fname = os.path.splitext(isob_fname)[0] + "-smoothed.shp"
+    return smoothed_fname
+
 def get_nearby_min_diffs(nearby_minutes, num_each_side):
     inc_range = range(1, num_each_side+1)
     mins_before = [-nearby_minutes * ii/float(num_each_side) \

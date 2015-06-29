@@ -17,46 +17,6 @@ DEF_ISO_INC=10
 
 CORRECT_NODATA_VALUE_BYTE=128
 
-def avgRasterName(loc_name, datestr, timestr, save_path, save_suffix,
-        num_each_side):
-    numavg = 1 + 2*num_each_side
-    fname_base = utils.rasterName(loc_name, datestr, timestr, save_path,
-        save_suffix)
-    return os.path.splitext(fname_base)[0] + "-avg%d.tiff" % numavg
-
-def isoContoursName(loc_name, datestr, timestr, save_path, save_suffix,
-        num_each_side):
-    avg_fname = avgRasterName(loc_name, datestr, timestr, save_path,
-        save_suffix, num_each_side)
-    return os.path.splitext(avg_fname)[0] + "-isocontours.shp"
-
-def isoBandsName(loc_name, datestr, timestr, save_path, save_suffix, 
-        num_each_side):
-    avg_fname = avgRasterName(loc_name, datestr, timestr, save_path,
-        save_suffix, num_each_side)
-    return os.path.splitext(avg_fname)[0] + "-isobands.shp"
-
-def polysIsoBandsName(loc_name, datestr, timestr, save_path, save_suffix,
-        num_each_side, iso_level):
-    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
-        save_suffix, num_each_side)
-    return os.path.splitext(isob_fname)[0] + "-%d-polys.shp" % iso_level
-
-def smoothedIsoBandsName(loc_name, datestr, timestr, save_path, 
-        save_suffix, num_each_side, iso_level):
-    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
-        save_suffix, num_each_side)
-    smoothed_fname = os.path.splitext(isob_fname)[0] + "-%d-smoothed.shp"\
-        % (iso_level)
-    return smoothed_fname
-
-def smoothedIsoBandsNameCombined(loc_name, datestr, timestr, save_path, 
-        save_suffix, num_each_side):
-    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
-        save_suffix, num_each_side)
-    smoothed_fname = os.path.splitext(isob_fname)[0] + "-smoothed.shp"
-    return smoothed_fname
-
 def make_average_raster(save_path, save_suffix, loc_name, datestr, timestr, 
         nearby_minutes, num_each_side, **kwargs):
     # N.B. :- there may be other kwargs passed in, not relevant here, which we ignore,
@@ -88,7 +48,7 @@ def make_average_raster(save_path, save_suffix, loc_name, datestr, timestr,
         os.system(transcmd)
 
     # Now do the big average
-    avg_fname = avgRasterName(loc_name, datestr, timestr, save_path, 
+    avg_fname = utils.avgRasterName(loc_name, datestr, timestr, save_path, 
         save_suffix, num_each_side)
 
     caps = string.ascii_uppercase[:len(fnames)]
@@ -105,9 +65,9 @@ def make_contours_isobands(save_path, save_suffix, loc_name, datestr, timestr,
         num_each_side, iso_max, iso_inc, **kwargs):
     # N.B. :- again kwargs is needed at the end to ignore unneeded args.
     iso_timeset = range(0, iso_max+1, iso_inc)[1:]
-    avg_fname = avgRasterName(loc_name, datestr, timestr, 
+    avg_fname = utils.avgRasterName(loc_name, datestr, timestr, 
         save_path, save_suffix, num_each_side)
-    ctr_fname = isoContoursName(loc_name, datestr, timestr, 
+    ctr_fname = utils.isoContoursName(loc_name, datestr, timestr, 
         save_path, save_suffix, num_each_side)
     if os.path.exists(ctr_fname):
         os.unlink(ctr_fname)
@@ -116,9 +76,8 @@ def make_contours_isobands(save_path, save_suffix, loc_name, datestr, timestr,
         % (utils.TIME_FIELD, avg_fname, ctr_fname, timeset_str)
     print "Running %s:" % contourcmd
     os.system(contourcmd)
-    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path, 
+    isob_fname = utils.isoBandsAllName(loc_name, datestr, timestr, save_path, 
         save_suffix, num_each_side)
-    isob_all_fname = os.path.splitext(isob_fname)[0] + "-all.shp"
     # Line below calls script that relies on Matplotlib
     # Sourced from:
     # https://github.com/rveciana/geoexamples/tree/master/python/raster_isobands
@@ -141,7 +100,7 @@ def make_contours_isobands(save_path, save_suffix, loc_name, datestr, timestr,
 
 def extract_and_smooth_isobands(save_path, save_suffix, loc_name, datestr,
         timestr, num_each_side, iso_max, iso_inc, **kwargs):
-    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path, 
+    isob_fname = utils.isoBandsName(loc_name, datestr, timestr, save_path, 
         save_suffix, num_each_side)
     if not os.path.exists(isob_fname):
         print "Warning: need pre-existing vector isobands file to extract "\
@@ -155,13 +114,13 @@ def extract_and_smooth_isobands(save_path, save_suffix, loc_name, datestr,
 
     print "Beginning extracting and smoothing isoband vectors ..."
     for iso_level in range(iso_inc, iso_max+1, iso_inc):
-        polys_fname = polysIsoBandsName(loc_name, datestr,
+        polys_fname = utils.polysIsoBandsName(loc_name, datestr,
             timestr, save_path, save_suffix, num_each_side, iso_level)
         print "Extract polygons for iso level %d to %s:" % \
             (iso_level, polys_fname)
         get_polys_at_level.get_polys_at_level(isob_fname, polys_fname,
             utils.TIME_FIELD, iso_level)
-        smoothed_fname = smoothedIsoBandsName(loc_name, datestr, 
+        smoothed_fname = utils.smoothedIsoBandsName(loc_name, datestr, 
             timestr, save_path, save_suffix, num_each_side, iso_level)
         print "Smoothing these and saving to file %s:" % \
             (smoothed_fname)
@@ -171,11 +130,11 @@ def extract_and_smooth_isobands(save_path, save_suffix, loc_name, datestr,
 def combine_smoothed_isoband_files(save_path, save_suffix, loc_name,
         datestr, timestr, num_each_side, iso_max, iso_inc, **kwargs):
     #print "Combining smoothed isoband files into a single file:"
-    combined_smoothed_fname = smoothedIsoBandsNameCombined(loc_name, datestr, 
-            timestr, save_path, save_suffix, num_each_side) 
+    combined_smoothed_fname = utils.smoothedIsoBandsNameCombined(loc_name,
+        datestr, timestr, save_path, save_suffix, num_each_side) 
 
     # Open the first of the smoothed isobands files to get EPSG
-    first_smoothed_iso_fname = smoothedIsoBandsName(loc_name, datestr, 
+    first_smoothed_iso_fname = utils.smoothedIsoBandsName(loc_name, datestr, 
         timestr, save_path, save_suffix, num_each_side, iso_inc)
     source = ogr.Open(first_smoothed_iso_fname)
     if not source:
@@ -195,7 +154,7 @@ def combine_smoothed_isoband_files(save_path, save_suffix, loc_name,
 
     feat_id = 0
     for iso_level in range(iso_inc, iso_max+1, iso_inc):
-        smoothed_iso_fname = smoothedIsoBandsName(loc_name, datestr, 
+        smoothed_iso_fname = utils.smoothedIsoBandsName(loc_name, datestr, 
             timestr, save_path, save_suffix, num_each_side, iso_level)
         source = ogr.Open(smoothed_iso_fname)
         in_layer = source.GetLayer(0)
