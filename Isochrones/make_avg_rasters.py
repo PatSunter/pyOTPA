@@ -1,13 +1,15 @@
 import os
 import os.path
+import sys
 import string
 from datetime import date
 import itertools
 import operator
 
-import utils
+import osgeo
+from osgeo import ogr
 
-TIME_FIELD="time"
+import utils
 
 # These determine default isochrone time maximums and increments
 DEF_ISO_MAX=40
@@ -46,6 +48,13 @@ def smoothedIsoBandsName(loc_name, datestr, timestr, save_path,
         save_suffix, num_each_side)
     smoothed_fname = os.path.splitext(isob_fname)[0] + "-%d-smoothed.shp"\
         % (iso_level)
+    return smoothed_fname
+
+def smoothedIsoBandsNameCombined(loc_name, datestr, timestr, save_path, 
+        save_suffix, num_each_side):
+    isob_fname = isoBandsName(loc_name, datestr, timestr, save_path,
+        save_suffix, num_each_side)
+    smoothed_fname = os.path.splitext(isob_fname)[0] + "-smoothed.shp"
     return smoothed_fname
 
 def make_average_raster(save_path, save_suffix, loc_name, datestr, timestr, 
@@ -104,7 +113,7 @@ def make_contours_isobands(save_path, save_suffix, loc_name, datestr, timestr,
         os.unlink(ctr_fname)
     timeset_str = " ".join([str(tval+0.1) for tval in iso_timeset])
     contourcmd = 'gdal_contour -a %s %s %s -nln isochrones -fl %s' \
-        % (TIME_FIELD, avg_fname, ctr_fname, timeset_str)
+        % (utils.TIME_FIELD, avg_fname, ctr_fname, timeset_str)
     print "Running %s:" % contourcmd
     os.system(contourcmd)
     isob_fname = isoBandsName(loc_name, datestr, timestr, save_path, 
@@ -114,7 +123,8 @@ def make_contours_isobands(save_path, save_suffix, loc_name, datestr, timestr,
     # Sourced from:
     # https://github.com/rveciana/geoexamples/tree/master/python/raster_isobands
     isobandscmd = 'isobands_matplotlib.py -up True -a %s %s %s '\
-        '-nln isochrones -i %d' % (TIME_FIELD, avg_fname, isob_all_fname, iso_inc)
+        '-nln isochrones -i %d' \
+        % (utils.TIME_FIELD, avg_fname, isob_all_fname, iso_inc)
     print "Running %s:" % isobandscmd
     os.system(isobandscmd)
     # These isobands will include all isobands up to OTP's max (128 mins). 
@@ -125,7 +135,7 @@ def make_contours_isobands(save_path, save_suffix, loc_name, datestr, timestr,
         os.unlink(isob_fname)
     # Watch out that ogr2ogr takes _dest_ file before _src_ file.
     isobandssubsetcmd = 'ogr2ogr -where "%s <= %d" %s %s' \
-        % (TIME_FIELD, iso_timeset[-1], isob_fname, isob_all_fname)
+        % (utils.TIME_FIELD, iso_timeset[-1], isob_fname, isob_all_fname)
     print "Running %s:" % isobandssubsetcmd 
     os.system(isobandssubsetcmd)
 
@@ -150,13 +160,65 @@ def extract_and_smooth_isobands(save_path, save_suffix, loc_name, datestr,
         print "Extract polygons for iso level %d to %s:" % \
             (iso_level, polys_fname)
         get_polys_at_level.get_polys_at_level(isob_fname, polys_fname,
-            TIME_FIELD, iso_level)
+            utils.TIME_FIELD, iso_level)
         smoothed_fname = smoothedIsoBandsName(loc_name, datestr, 
             timestr, save_path, save_suffix, num_each_side, iso_level)
         print "Smoothing these and saving to file %s:" % \
             (smoothed_fname)
         shapely_smoother.smooth_all_polygons(polys_fname, smoothed_fname)
     print "Done."
+
+def combine_smoothed_isoband_files(save_path, save_suffix, loc_name,
+        datestr, timestr, num_each_side, iso_max, iso_inc, **kwargs):
+    #print "Combining smoothed isoband files into a single file:"
+    combined_smoothed_fname = smoothedIsoBandsNameCombined(loc_name, datestr, 
+            timestr, save_path, save_suffix, num_each_side) 
+
+    # Open the first of the smoothed isobands files to get EPSG
+    first_smoothed_iso_fname = smoothedIsoBandsName(loc_name, datestr, 
+        timestr, save_path, save_suffix, num_each_side, iso_inc)
+    source = ogr.Open(first_smoothed_iso_fname)
+    if not source:
+        print "Error:- can't open individual smoothed isochrone shapefiles "\
+            "for location '%s' - file %s ." \
+            % (loc_name, first_smoothed_iso_fname)
+        sys.exit(1)
+    in_layer = source.GetLayer(0)
+    smoothed_srs = in_layer.GetSpatialRef()
+
+    # Create new file
+    import shapely_smoother
+    comb_ds, comb_layer = shapely_smoother.create_smoothed_isobands_shpfile(
+        combined_smoothed_fname, smoothed_srs, time_field=True)
+    comb_defn = comb_layer.GetLayerDefn()
+    in_layer = None
+
+    feat_id = 0
+    for iso_level in range(iso_inc, iso_max+1, iso_inc):
+        smoothed_iso_fname = smoothedIsoBandsName(loc_name, datestr, 
+            timestr, save_path, save_suffix, num_each_side, iso_level)
+        source = ogr.Open(smoothed_iso_fname)
+        in_layer = source.GetLayer(0)
+        # TODO:- potentially need to subtract polygons in previous layers
+        # during the process below, to support transparencies in visualisation
+        # etc.
+        for poly in in_layer:
+            # We need to adjust muiltipoly IDs for use in the combined file.
+            new_poly = ogr.Feature(comb_defn)
+            new_poly.SetField(utils.ID_FIELD, feat_id)
+            feat_id += 1
+            new_poly.SetField(utils.TIME_FIELD, iso_level)
+            poly_geom = poly.GetGeometryRef()
+            new_poly.SetGeometry(poly_geom)
+            comb_layer.CreateFeature(new_poly)
+        in_layer = None
+    # Close, save the new shapefile.    
+    comb_layer = None
+    comb_ds = None
+    #print "...done."
+    print "combined smoothed isochrones saved to file %s ." \
+        % combined_smoothed_fname
+    return
 
 def generate_avg_rasters_and_isobands(multi_graph_iso_set):
     for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
@@ -179,3 +241,24 @@ def generate_smoothed_isobands(multi_graph_iso_set):
             for timestr in isos_spec['times']:
                 extract_and_smooth_isobands(save_path, save_suffix, loc_name,
                     datestr, timestr, **isos_spec)
+
+def combine_smoothed_isobands_files(multi_graph_iso_set):
+    """Combines all the separate smoothed isoband files (with e.g. -10, -20
+    extensions) into a single Shapefile with multiple multi-polygon shapes
+    defined (which makes consistent styling etc easier)."""
+    for server_url, otp_router_id, save_path, save_suffix, isos_spec in \
+            multi_graph_iso_set:
+        datestr = isos_spec['date']
+        print "Creating combined smoothed isochrones shapefiles for "\
+            "results from graph '%s', at date '%s', times %s:" \
+            % (otp_router_id, datestr, isos_spec['times'])
+        for loc_name in \
+                itertools.imap(operator.itemgetter(0), isos_spec['locations']):
+            print "Creating combined smoothed isochrones shapefile for "\
+                "location '%s':" % loc_name
+            for timestr in isos_spec['times']:
+                print "Creating combined shapefile at date, time %s - %s" % \
+                    (datestr, timestr)
+                combine_smoothed_isoband_files(save_path, save_suffix, loc_name,
+                    datestr, timestr, **isos_spec)
+    return
