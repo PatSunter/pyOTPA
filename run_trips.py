@@ -52,7 +52,8 @@ def main():
     #    origin_lon_lat, dest_lon_lat)
 
     #trips_shpfilename = "/Users/Shared/SoftwareDev/UrbanModelling-GIS/OSSTIP/OTP-Routing-Tools/Trips_Generator/output/trips-with_roads_0015-10000.shp"
-    trips_shpfilename = "/Users/Shared/SoftwareDev/UrbanModelling-GIS/OSSTIP/OTP-Routing-Tools/Trips_Generator/output/trips-bad-5.shp"
+    #trips_shpfilename = "/Users/Shared/SoftwareDev/UrbanModelling-GIS/OSSTIP/OTP-Routing-Tools/Trips_Generator/output/trips-bad-5.shp"
+    trips_shpfilename = "/Users/Shared/Dropbox/PhD-TechnicalProjectWork/OSSTIP_PTUA_FullResults/Routing_Results_VISTA/generated_trips/trips-vista_07-100.shp"
     trips_set_name = "%s-walk_%s" % \
         (os.path.splitext(os.path.basename(trips_shpfilename))[0],
          ROUTING_PARAMS['maxWalkDistance'])
@@ -71,8 +72,8 @@ def main():
 
     trip_results_by_graph = otp_router.route_trip_set_on_graphs(SERVER_URL,
         ROUTING_PARAMS,
-        GRAPH_SPECS, trip_req_start_date, trips, trips_by_id,
-        output_base_dir, save_incrementally, resume_existing=True)
+        GRAPH_SPECS, trips, trips_by_id, output_base_dir,
+        trip_req_start_date, save_incrementally, resume_existing=True)
 
     print "\nFinished routing all requested trips from shpfile %s ." \
         % trips_shpfilename
