@@ -7,7 +7,6 @@ potentially 100K plus trips we're going to deal with.
 
 import copy
 from datetime import datetime
-from osgeo import osr
 
 import otp_config
 
@@ -39,6 +38,7 @@ def new_trip_with_updated_start(exist_trip, new_start_dt):
     return upd_time_trip
 
 def get_trips_srs():
+    from osgeo import osr
     trips_srs = osr.SpatialReference()
     trips_srs.ImportFromEPSG(TRIP_EPSG)
     return trips_srs
