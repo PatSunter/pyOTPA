@@ -2,6 +2,7 @@
 
 import urllib
 import urllib2
+import socket
 import os.path
 import json
 import copy
@@ -83,6 +84,10 @@ def route_trip(server_url, routing_params, trip_req_start_date,
         data = response.read()
     except urllib2.URLError:
         # In case of timeouts etc:- just return no data.
+        data = None
+    except socket.timeout:
+        # In some cases this different exception is how timeouts raised
+        # see http://heyman.info/2010/apr/22/python-urllib2-timeout-issue/
         data = None
     return data
 
